@@ -20,38 +20,80 @@ import { actionTools, actionHandlers } from "./src/tools/actions.js";
 import { releaseTools, releaseHandlers } from "./src/tools/releases.js";
 import { userTools, userHandlers } from "./src/tools/user.js";
 
-const TOOLS = [
-  ...repositoryTools,
-  ...commitTools,
-  ...pullRequestTools,
-  ...issueTools,
-  ...milestoneTools,
-  ...collaboratorTools,
-  ...variableTools,
-  ...gistTools,
-  ...actionTools,
-  ...releaseTools,
-  ...userTools,
-];
-
-const HANDLERS = {
-  ...repositoryHandlers,
-  ...commitHandlers,
-  ...pullRequestHandlers,
-  ...issueHandlers,
-  ...milestoneHandlers,
-  ...collaboratorHandlers,
-  ...variableHandlers,
-  ...gistHandlers,
-  ...actionHandlers,
-  ...releaseHandlers,
-  ...userHandlers,
+const DOMAIN_MODULES = {
+  repositories: { tools: repositoryTools, handlers: repositoryHandlers },
+  commits: { tools: commitTools, handlers: commitHandlers },
+  "pull-requests": { tools: pullRequestTools, handlers: pullRequestHandlers },
+  issues: { tools: issueTools, handlers: issueHandlers },
+  milestones: { tools: milestoneTools, handlers: milestoneHandlers },
+  collaborators: { tools: collaboratorTools, handlers: collaboratorHandlers },
+  variables: { tools: variableTools, handlers: variableHandlers },
+  gists: { tools: gistTools, handlers: gistHandlers },
+  actions: { tools: actionTools, handlers: actionHandlers },
+  releases: { tools: releaseTools, handlers: releaseHandlers },
+  user: { tools: userTools, handlers: userHandlers },
 };
+
+const DOMAIN_ALIASES = {
+  repos: "repositories",
+  repo: "repositories",
+  repository: "repositories",
+  pr: "pull-requests",
+  prs: "pull-requests",
+  pull_requests: "pull-requests",
+  pulls: "pull-requests",
+  issue: "issues",
+  members: "collaborators",
+  member: "collaborators",
+  collaborator: "collaborators",
+  vars: "variables",
+  secrets: "variables",
+  gist: "gists",
+  ci: "actions",
+  workflow: "actions",
+  workflows: "actions",
+  tags: "releases",
+  tag: "releases",
+  users: "user",
+};
+
+function getCliDomains() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith("--domains=")) {
+      return args[i].slice("--domains=".length);
+    }
+    if (args[i] === "--domains" && args[i + 1]) {
+      return args[i + 1];
+    }
+  }
+  return null;
+}
+
+export function getActiveDomains() {
+  const rawDomains = getCliDomains() || process.env.GITHUB_TOOL_DOMAINS;
+  if (!rawDomains || rawDomains.trim() === "" || rawDomains.trim() === "*") {
+    return Object.keys(DOMAIN_MODULES);
+  }
+  const requested = rawDomains
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .map((d) => DOMAIN_ALIASES[d] || d);
+  const active = requested.filter((d) => Boolean(DOMAIN_MODULES[d]));
+  return active.length > 0 ? Array.from(new Set(active)) : Object.keys(DOMAIN_MODULES);
+}
+
+const activeDomains = getActiveDomains();
+const TOOLS = activeDomains.flatMap((d) => DOMAIN_MODULES[d].tools);
+const HANDLERS = Object.assign(
+  {},
+  ...activeDomains.map((d) => DOMAIN_MODULES[d].handlers)
+);
 
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "1.2.0",
+    version: "1.3.0",
   },
   {
     capabilities: {
@@ -63,7 +105,22 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const availableTools = isReadOnly() ? TOOLS.filter((t) => !t.mutating) : TOOLS;
   return {
-    tools: availableTools.map(({ mutating, ...tool }) => tool),
+    tools: availableTools.map(({ mutating, ...tool }) => ({
+      ...tool,
+      title:
+        tool.title ||
+        tool.name
+          .split("_")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" "),
+      annotations: {
+        readOnlyHint: !mutating,
+        destructiveHint: tool.name.startsWith("delete_") || tool.name.startsWith("remove_"),
+        idempotentHint: !mutating,
+        openWorldHint: false,
+        ...(tool.annotations || {}),
+      },
+    })),
   };
 });
 
@@ -108,11 +165,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  if (isReadOnly()) {
-    console.error("GitHub MCP Server running on stdio [READ-ONLY MODE: mutating tools disabled]");
-  } else {
-    console.error("GitHub MCP Server running on stdio");
-  }
+  const modeStr = isReadOnly() ? " [READ-ONLY MODE: mutating tools disabled]" : "";
+  const domainFilterStr = (getCliDomains() || process.env.GITHUB_TOOL_DOMAINS)
+    ? ` [DOMAINS: ${activeDomains.join(",")}]`
+    : "";
+  console.error(`GitHub MCP Server v1.3.0 running on stdio (${TOOLS.length} tools registered)${modeStr}${domainFilterStr}`);
 }
 
 runServer().catch((error) => {
