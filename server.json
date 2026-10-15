@@ -7,12 +7,12 @@
     "url": "https://github.com/sumirati/mcp-github",
     "source": "github"
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@sumirati/mcp-github",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "transport": {
         "type": "stdio"
       },
