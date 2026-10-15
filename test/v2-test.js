@@ -86,6 +86,15 @@ console.log(`[PASS] findActions('health') returned ${healthResults.total_matches
 const healthActionNames = healthResults.actions.map((a) => a.action);
 assert(healthActionNames.includes("system_health_check"), "Missing system_health_check");
 
+// 11b. Team and group action discovery
+const groupResults = findActions("create_group", "");
+console.log(`[PASS] findActions('create_group') returned ${groupResults.total_matches} matches`);
+assert(groupResults.actions.map((a) => a.action).includes("create_group"), "Missing create_group");
+assert.strictEqual(groupResults.actions[0].mutating, true, "create_group must be marked mutating");
+const teamResults = findActions("create_team", "");
+assert(teamResults.actions.map((a) => a.action).includes("create_team"), "Missing create_team");
+assert.strictEqual(teamResults.actions[0].mutating, true, "create_team must be marked mutating");
+
 // 12. Smart format: markdown output support
 const mdResults = findActions("workflow", "", "markdown");
 assert(typeof mdResults === "string", "Expected markdown output string");

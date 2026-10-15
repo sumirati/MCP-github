@@ -27,7 +27,7 @@ function getDomainForTool(name) {
   if (name.includes("workflow") || name.includes("job") || name.includes("run") || name.includes("artifact")) return "actions";
   if (name.includes("release") || name.includes("tag")) return "releases";
   if (name.includes("commit")) return "commits";
-  if (name.includes("user") || name.includes("organization") || name.includes("health")) return "user";
+  if (name.includes("user") || name.includes("organization") || name.includes("health") || name.includes("team") || name.includes("group")) return "user";
   return "repositories";
 }
 
@@ -95,6 +95,14 @@ const DOMAIN_ALIASES = {
   diagnostics: "user",
   protection: "repositories",
   branch_protection: "repositories",
+  org: "user",
+  orgs: "user",
+  organization: "user",
+  organizations: "user",
+  teams: "user",
+  team: "user",
+  groups: "user",
+  group: "user",
 };
 
 /**

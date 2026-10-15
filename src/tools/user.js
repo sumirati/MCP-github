@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "../schemas.js";
 import { githubRequest, isReadOnly } from "../client.js";
-import { summarizeUser, summarizeRepository } from "../helpers.js";
+import { summarizeUser, summarizeRepository, summarizeOrganization, summarizeTeam } from "../helpers.js";
 
 export const SystemHealthCheckSchema = z.object({});
 
@@ -11,9 +11,30 @@ export const GetUserSchema = z.object({
   username: z.string().describe("GitHub username to retrieve public profile for (e.g. 'octocat')"),
 });
 
+export const GetOrganizationSchema = z.object({
+  org: z.string().describe("The organization name / login (e.g. 'github' or 'my-org')"),
+});
+
+export const CreateTeamSchema = z.object({
+  org: z.string().describe("The organization name under which to create the team (e.g. 'my-org')"),
+  name: z.string().describe("The name of the team / group (e.g. 'Core Developers' or 'Platform Team')"),
+  description: z.string().optional().describe("A short description of the team's purpose"),
+  privacy: z.enum(["secret", "closed"]).optional().default("closed").describe("Privacy level: 'closed' (visible to org members) or 'secret' (only visible to team members). Default: 'closed'"),
+  permission: z.enum(["pull", "push", "admin"]).optional().default("pull").describe("Default repository permission: 'pull', 'push', or 'admin'"),
+  parent_team_id: z.number().optional().describe("Parent team numeric ID to create this team as a nested subteam / subgroup"),
+});
+
+export const CreateGroupSchema = z.object({
+  org: z.string().describe("The organization name under which to create the group / team (e.g. 'my-org')"),
+  name: z.string().describe("The name of the group / team (e.g. 'Platform Team' or 'Subsystem')"),
+  description: z.string().optional().describe("Short description of the group's purpose"),
+  privacy: z.enum(["secret", "closed"]).optional().default("closed").describe("Privacy level: 'closed' (visible to org members) or 'secret' (only visible to team members)"),
+  parent_id: z.number().optional().describe("Parent group/team numeric ID to create this as a nested subgroup / subteam"),
+});
+
 export const ListUserOrganizationsSchema = z.object({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of organizations per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of organizations per page (default: 30, max: 100)"),
 });
 
 export const ListAccessibleRepositoriesSchema = z.object({
@@ -45,6 +66,23 @@ export const userTools = [
     name: "list_user_organizations",
     description: "List GitHub organizations that the authenticated user belongs to. Use to discover org namespaces for creating or querying repositories.",
     inputSchema: zodToJsonSchema(ListUserOrganizationsSchema),
+  },
+  {
+    name: "get_organization",
+    description: "Retrieve comprehensive details for a specific GitHub organization (name, description, email, blog, public/private repos). Use when verifying organization access or inspecting org settings.",
+    inputSchema: zodToJsonSchema(GetOrganizationSchema),
+  },
+  {
+    name: "create_team",
+    description: "Create a new team in a GitHub organization. Supports parent_team_id to establish nested subteams / child groups. Requires organization owner/admin privileges and GITHUB_READ_ONLY=false.",
+    inputSchema: zodToJsonSchema(CreateTeamSchema),
+    mutating: true,
+  },
+  {
+    name: "create_group",
+    description: "Create a new group / team in a GitHub organization. Supports parent_id to create nested child groups / subteams. (Alias for create_team for cross-platform GitLab/GitHub parity). Requires organization admin privileges and GITHUB_READ_ONLY=false.",
+    inputSchema: zodToJsonSchema(CreateGroupSchema),
+    mutating: true,
   },
   {
     name: "list_accessible_repositories",
@@ -108,6 +146,39 @@ export const userHandlers = {
       description: org.description,
       html_url: `https://github.com/${org.login}`,
     }));
+  },
+
+  get_organization: async (args) => {
+    const parsed = GetOrganizationSchema.parse(args);
+    const res = await githubRequest(`/orgs/${encodeURIComponent(parsed.org)}`);
+    return summarizeOrganization(res);
+  },
+
+  create_team: async (args) => {
+    const parsed = CreateTeamSchema.parse(args);
+    const body = {
+      name: parsed.name,
+      ...(parsed.description ? { description: parsed.description } : {}),
+      privacy: parsed.privacy,
+      permission: parsed.permission,
+      ...(parsed.parent_team_id !== undefined ? { parent_team_id: parsed.parent_team_id } : {}),
+    };
+    const res = await githubRequest(`/orgs/${encodeURIComponent(parsed.org)}/teams`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return summarizeTeam(res);
+  },
+
+  create_group: async (args) => {
+    const parsed = CreateGroupSchema.parse(args);
+    return await userHandlers.create_team({
+      org: parsed.org,
+      name: parsed.name,
+      description: parsed.description,
+      privacy: parsed.privacy,
+      parent_team_id: parsed.parent_id,
+    });
   },
 
   list_accessible_repositories: async (args) => {

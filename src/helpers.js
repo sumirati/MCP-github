@@ -196,6 +196,39 @@ export function summarizeUser(u) {
   };
 }
 
+export function summarizeOrganization(org) {
+  if (!org) return null;
+  return {
+    login: org.login,
+    id: org.id,
+    name: org.name,
+    description: org.description,
+    blog: org.blog,
+    location: org.location,
+    email: org.email,
+    is_verified: org.is_verified || false,
+    public_repos: org.public_repos,
+    html_url: org.html_url,
+    created_at: org.created_at,
+  };
+}
+
+export function summarizeTeam(team) {
+  if (!team) return null;
+  return {
+    id: team.id,
+    name: team.name,
+    slug: team.slug,
+    description: team.description,
+    privacy: team.privacy,
+    permission: team.permission,
+    members_count: team.members_count,
+    repos_count: team.repos_count,
+    parent: team.parent ? { id: team.parent.id, name: team.parent.name, slug: team.parent.slug } : null,
+    html_url: team.html_url,
+  };
+}
+
 export function sliceDiff(diffText, maxLines = 400) {
   if (!diffText) return "";
   const lines = diffText.split("\n");
