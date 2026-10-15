@@ -93,7 +93,7 @@ const HANDLERS = Object.assign(
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "1.3.0",
+    version: "1.3.1",
   },
   {
     capabilities: {
@@ -169,7 +169,7 @@ async function runServer() {
   const domainFilterStr = (getCliDomains() || process.env.GITHUB_TOOL_DOMAINS)
     ? ` [DOMAINS: ${activeDomains.join(",")}]`
     : "";
-  console.error(`GitHub MCP Server v1.3.0 running on stdio (${TOOLS.length} tools registered)${modeStr}${domainFilterStr}`);
+  console.error(`GitHub MCP Server v1.3.1 running on stdio (${TOOLS.length} tools registered)${modeStr}${domainFilterStr}`);
 }
 
 runServer().catch((error) => {
