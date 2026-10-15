@@ -4,90 +4,91 @@ import { githubRequest } from "../client.js";
 import { summarizeWorkflow, summarizeWorkflowRun, summarizeWorkflowJob, tailLog } from "../helpers.js";
 
 export const ListWorkflowsSchema = RepoParamsSchema.extend({
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of workflows per page (default: 30, max: 100)"),
 });
 
 export const ListWorkflowRunsSchema = RepoParamsSchema.extend({
-  workflow_id: z.union([z.string(), z.number()]).optional().describe("Workflow ID or workflow file name (e.g. 'ci.yml')"),
-  branch: z.string().optional().describe("Filter runs by branch"),
-  event: z.string().optional().describe("Filter runs by triggering event (e.g. 'push', 'pull_request')"),
+  workflow_id: z.union([z.string(), z.number()]).optional().describe("Workflow ID number or workflow YAML file name (e.g. 'ci.yml', 'release.yaml')"),
+  branch: z.string().optional().describe("Filter runs by head branch name (e.g. 'main', 'feature/auth')"),
+  event: z.string().optional().describe("Filter runs by triggering event type (e.g. 'push', 'pull_request', 'workflow_dispatch')"),
   status: z
     .enum(["completed", "action_required", "cancelled", "failure", "neutral", "skipped", "stale", "success", "timed_out", "in_progress", "queued", "requested", "waiting"])
-    .optional(),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(20),
+    .optional()
+    .describe("Filter runs by execution status or conclusion (e.g. 'completed', 'success', 'failure', 'in_progress', 'queued')"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(20).describe("Number of workflow runs per page (default: 20, max: 100)"),
 });
 
 export const GetWorkflowRunSchema = RepoParamsSchema.extend({
-  run_id: z.number().describe("Workflow run ID"),
+  run_id: z.number().describe("Unique numeric identifier of the workflow run"),
 });
 
 export const ListWorkflowRunJobsSchema = RepoParamsSchema.extend({
-  run_id: z.number().describe("Workflow run ID"),
-  filter: z.enum(["latest", "all"]).optional().default("latest"),
+  run_id: z.number().describe("Unique numeric identifier of the workflow run"),
+  filter: z.enum(["latest", "all"]).optional().default("latest").describe("Filter jobs: 'latest' (latest execution attempt) or 'all' (all attempts)"),
 });
 
 export const GetJobLogsSchema = RepoParamsSchema.extend({
-  job_id: z.number().describe("Job ID"),
-  tail_lines: z.number().optional().default(200).describe("Number of tail lines to return to preserve token context (default: 200)"),
+  job_id: z.number().describe("Unique numeric identifier of the job"),
+  tail_lines: z.number().optional().default(200).describe("Number of trailing log lines to return to preserve LLM token context (default: 200)"),
 });
 
 export const TriggerWorkflowSchema = RepoParamsSchema.extend({
-  workflow_id: z.union([z.string(), z.number()]).describe("Workflow ID or filename (e.g. 'build.yml')"),
-  ref: z.string().describe("Git reference (branch or tag name) to run workflow on"),
-  inputs: z.record(z.any()).optional().describe("Key-value input parameters defined in the workflow dispatch trigger"),
+  workflow_id: z.union([z.string(), z.number()]).describe("Workflow ID or YAML filename containing a workflow_dispatch trigger (e.g. 'deploy.yml')"),
+  ref: z.string().describe("Git branch or tag name on which to run the workflow (e.g. 'main')"),
+  inputs: z.record(z.any()).optional().describe("Input parameters dictionary matching workflow_dispatch input definitions"),
 });
 
 export const CancelWorkflowRunSchema = RepoParamsSchema.extend({
-  run_id: z.number().describe("Workflow run ID"),
+  run_id: z.number().describe("Numeric identifier of the active workflow run to cancel"),
 });
 
 export const RerunWorkflowSchema = RepoParamsSchema.extend({
-  run_id: z.number().describe("Workflow run ID"),
+  run_id: z.number().describe("Numeric identifier of the completed or failed workflow run to re-run"),
 });
 
 export const actionTools = [
   {
     name: "list_workflows",
-    description: "List GitHub Actions workflows in a repository",
+    description: "List GitHub Actions CI/CD workflow files configured in a repository (.github/workflows). Use to discover workflow names and IDs before triggering or inspecting runs.",
     inputSchema: zodToJsonSchema(ListWorkflowsSchema),
   },
   {
     name: "list_workflow_runs",
-    description: "List workflow runs with status, conclusion, and branch metadata",
+    description: "List workflow execution runs with status, conclusion ('success', 'failure'), triggering event, and commit SHA. Use to check CI/CD pipeline health or find run IDs.",
     inputSchema: zodToJsonSchema(ListWorkflowRunsSchema),
   },
   {
     name: "get_workflow_run",
-    description: "Get detailed status of a specific workflow run",
+    description: "Get detailed status, timing, and conclusion for a specific workflow execution run. Use when monitoring CI pipeline completion.",
     inputSchema: zodToJsonSchema(GetWorkflowRunSchema),
   },
   {
     name: "list_workflow_run_jobs",
-    description: "List jobs and execution steps for a workflow run",
+    description: "List all individual jobs and step breakdown within a workflow run. Use to identify which specific job or step failed during a build.",
     inputSchema: zodToJsonSchema(ListWorkflowRunJobsSchema),
   },
   {
     name: "get_job_logs",
-    description: "Fetch and safely tail the execution logs of an Actions job (defaults to last 200 lines)",
+    description: "Fetch plain text execution logs for an Actions job with tail extraction (defaults to last 200 lines). Behavioral safety: automatically trims massive log files to preserve LLM token context while capturing failure stack traces.",
     inputSchema: zodToJsonSchema(GetJobLogsSchema),
   },
   {
     name: "trigger_workflow",
-    description: "Trigger a workflow_dispatch event to run a GitHub Actions workflow",
+    description: "Dispatch a workflow run on a branch or tag via workflow_dispatch event with custom inputs. Requires write permissions and GITHUB_READ_ONLY=false. The target workflow file must define a workflow_dispatch trigger.",
     inputSchema: zodToJsonSchema(TriggerWorkflowSchema),
     mutating: true,
   },
   {
     name: "cancel_workflow_run",
-    description: "Cancel a running or queued GitHub Actions workflow run",
+    description: "Cancel a queued or currently executing GitHub Actions workflow run. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CancelWorkflowRunSchema),
     mutating: true,
   },
   {
     name: "rerun_workflow",
-    description: "Re-run a completed or failed GitHub Actions workflow run",
+    description: "Re-execute all jobs in a completed or failed GitHub Actions workflow run. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(RerunWorkflowSchema),
     mutating: true,
   },
