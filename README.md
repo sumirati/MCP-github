@@ -187,6 +187,34 @@ Configure the following environment variables (or copy `.env.example` to `.env`)
 | `GITHUB_TOKEN` | No | — | Alternative token variable name |
 | `GITHUB_API_URL` | No | `https://api.github.com` | Base API URL (or GitHub Enterprise Server) |
 | `GITHUB_READ_ONLY` | No | `false` | Enable 3-tier read-only mode (`true`, `1`, `yes`) |
+| `GITHUB_TOOL_DOMAINS` | No | `*` (all) | Comma-separated domain whitelist to restrict registered tools and preserve context window tokens (e.g. `'repositories,pull-requests,issues'`). Aliases supported: `repos`, `pr`, `ci`, `vars`. |
+
+### Domain / Module Whitelist
+
+You can selectively enable only specific functional domains to dramatically reduce tool schema overhead in the LLM's context window (from ~14k tokens down to ~1.5k–3k tokens).
+
+Specify via environment variable or CLI flag `--domains=<list>`:
+
+```bash
+# Via environment variable
+GITHUB_TOOL_DOMAINS="repositories,pull-requests,issues" npx @sumirati/mcp-github
+
+# Via CLI flag
+npx @sumirati/mcp-github --domains="repositories,commits,actions"
+```
+
+#### Available Domains & Supported Aliases:
+- `repositories` (aliases: `repos`, `repo`, `repository`)
+- `commits`
+- `pull-requests` (aliases: `pr`, `prs`, `pull_requests`, `pulls`)
+- `issues` (aliases: `issue`)
+- `milestones`
+- `collaborators` (aliases: `members`, `member`, `collaborator`)
+- `variables` (aliases: `vars`, `secrets`)
+- `gists` (aliases: `gist`)
+- `actions` (aliases: `ci`, `workflow`, `workflows`)
+- `releases` (aliases: `tags`, `tag`)
+- `user` (aliases: `users`)
 
 ---
 
