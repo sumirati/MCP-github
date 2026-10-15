@@ -215,3 +215,78 @@ export function tailLog(logText, tailLines = 200) {
   }
   return lines.slice(-tailLines).join("\n");
 }
+
+export function summarizeMilestone(m) {
+  if (!m) return null;
+  return {
+    number: m.number,
+    id: m.id,
+    title: m.title,
+    state: m.state,
+    description: m.description || null,
+    due_on: m.due_on || null,
+    open_issues: m.open_issues || 0,
+    closed_issues: m.closed_issues || 0,
+    created_at: m.created_at,
+    updated_at: m.updated_at,
+    html_url: m.html_url,
+  };
+}
+
+export function summarizeCollaborator(c) {
+  if (!c) return null;
+  return {
+    login: c.login,
+    id: c.id,
+    role_name: c.role_name || null,
+    permissions: c.permissions || {},
+    html_url: c.html_url,
+  };
+}
+
+export function summarizeActionsVariable(v) {
+  if (!v) return null;
+  return {
+    name: v.name,
+    value: v.value,
+    created_at: v.created_at,
+    updated_at: v.updated_at,
+  };
+}
+
+export function summarizeGist(g) {
+  if (!g) return null;
+  const files = Object.keys(g.files || {}).map((filename) => {
+    const f = g.files[filename];
+    return {
+      filename: f.filename,
+      type: f.type,
+      language: f.language,
+      size: f.size,
+    };
+  });
+  return {
+    id: g.id,
+    description: g.description || null,
+    public: g.public || false,
+    owner: g.owner ? g.owner.login : null,
+    files,
+    comments: g.comments || 0,
+    created_at: g.created_at,
+    updated_at: g.updated_at,
+    html_url: g.html_url,
+  };
+}
+
+export function summarizePullRequestReview(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    user: r.user ? r.user.login : null,
+    body: r.body || null,
+    state: r.state,
+    submitted_at: r.submitted_at,
+    commit_id: r.commit_id ? r.commit_id.slice(0, 7) : null,
+    html_url: r.html_url,
+  };
+}
