@@ -10,7 +10,7 @@ export const ListCommitsSchema = RepoParamsSchema.extend({
   since: z.string().optional().describe("Only return commits pushed on or after this timestamp (ISO 8601 format, e.g. '2026-01-01T00:00:00Z')"),
   until: z.string().optional().describe("Only return commits pushed on or before this timestamp (ISO 8601 format)"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of commits per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of commits per page (default: 30, max: 100)"),
 });
 
 export const GetCommitSchema = RepoParamsSchema.extend({
@@ -22,7 +22,7 @@ export const GetCommitSchema = RepoParamsSchema.extend({
 export const commitTools = [
   {
     name: "list_commits",
-    description: "List repository commit history chronologically with author, date, and commit message summaries. Use to trace git history, find recent commits, or discover commit SHAs. For viewing actual line-by-line diffs of a commit, use get_commit instead.",
+    description: "List repository commit history chronologically with upstream filtering (sha, path, author, since, until) and capped pagination (max 100). For viewing actual line-by-line diffs of a commit, use get_commit instead.",
     inputSchema: zodToJsonSchema(ListCommitsSchema),
   },
   {

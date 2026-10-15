@@ -10,7 +10,7 @@ export const ListPullRequestsSchema = RepoParamsSchema.extend({
   sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().default("created").describe("Sort PRs by: 'created', 'updated', 'popularity', or 'long-running' (default: 'created')"),
   direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of pull requests per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of pull requests per page (default: 30, max: 100)"),
 });
 
 export const GetPullRequestSchema = RepoParamsSchema.extend({
@@ -48,7 +48,7 @@ export const MergePullRequestSchema = RepoParamsSchema.extend({
 export const ListPullRequestCommentsSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number to list inline comments for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
 });
 
 export const CreatePullRequestCommentSchema = RepoParamsSchema.extend({
@@ -68,7 +68,7 @@ export const CreatePullRequestReplySchema = RepoParamsSchema.extend({
 export const ListPullRequestReviewsSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number to list reviews for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of reviews per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of reviews per page (default: 30, max: 100)"),
 });
 
 export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
@@ -90,7 +90,7 @@ export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
 export const pullRequestTools = [
   {
     name: "list_pull_requests",
-    description: "List and filter pull requests in a repository with token-saving summary metadata. Use when locating active PRs, checking open PR numbers, or filtering by author/branch. To view code changes, use get_pull_request_diff; for non-PR issue tickets, use list_issues.",
+    description: "List and filter pull requests with upstream indexed parameters (state, head, base) and capped pagination (max 100). To inspect a known PR, prefer 'get_pull_request' with pull_number; for diffs, use get_pull_request_diff.",
     inputSchema: zodToJsonSchema(ListPullRequestsSchema),
   },
   {

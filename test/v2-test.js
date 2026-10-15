@@ -63,4 +63,32 @@ const allTools = getAllTools();
 console.log(`[PASS] getAllTools() returns ${allTools.length} tools for legacy mode`);
 assert(allTools.length === catalogSize, "getAllTools should match catalog size");
 
-console.log("\nALL @sumirati/mcp-github CHECKS PASSED SUCCESSFULLY!");
+// 9. Artifact actions discovery
+const artifactResults = findActions("artifact", "");
+console.log(`[PASS] findActions('artifact') returned ${artifactResults.total_matches} matches`);
+const artifactActionNames = artifactResults.actions.map((a) => a.action);
+assert(artifactActionNames.includes("list_workflow_run_artifacts"), "Missing list_workflow_run_artifacts");
+assert(artifactActionNames.includes("get_workflow_run_artifact"), "Missing get_workflow_run_artifact");
+console.log("       Artifact actions found:", artifactActionNames.join(", "));
+
+// 10. Branch protection action discovery
+const protectionResults = findActions("protection", "");
+console.log(`[PASS] findActions('protection') returned ${protectionResults.total_matches} matches`);
+const protectionActionNames = protectionResults.actions.map((a) => a.action);
+assert(protectionActionNames.includes("get_branch_protection"), "Missing get_branch_protection");
+console.log("       Protection action found:", protectionActionNames.join(", "));
+
+// 11. System health check discovery
+const healthResults = findActions("health", "");
+console.log(`[PASS] findActions('health') returned ${healthResults.total_matches} matches`);
+const healthActionNames = healthResults.actions.map((a) => a.action);
+assert(healthActionNames.includes("system_health_check"), "Missing system_health_check");
+
+// 12. Smart format: markdown output support
+const mdResults = findActions("workflow", "", "markdown");
+assert(typeof mdResults === "string", "Expected markdown output string");
+assert(mdResults.includes("| Action | Domain | Mutating | Description |"), "Expected markdown table header");
+assert(mdResults.includes("`list_workflows`"), "Expected list_workflows in markdown table");
+console.log("[PASS] findActions format: 'markdown' rendered valid Markdown table");
+
+console.log("\nALL @sumirati/mcp-github v2.1.0 CHECKS PASSED SUCCESSFULLY!");

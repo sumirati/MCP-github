@@ -10,7 +10,7 @@ import { actionTools, actionHandlers } from "./tools/actions.js";
 import { releaseTools, releaseHandlers } from "./tools/releases.js";
 import { userTools, userHandlers } from "./tools/user.js";
 import { extendedTools, extendedHandlers } from "./tools/extended.js";
-import { projectOutput } from "./helpers.js";
+import { projectOutput, jsonToMarkdown } from "./helpers.js";
 import { isReadOnly } from "./client.js";
 
 // Domain classification mapping
@@ -24,10 +24,10 @@ function getDomainForTool(name) {
   if (name.includes("milestone")) return "milestones";
   if (name.includes("pull_request") || name.includes("review")) return "pull-requests";
   if (name.includes("issue") || name.includes("label")) return "issues";
-  if (name.includes("workflow") || name.includes("job") || name.includes("run")) return "actions";
+  if (name.includes("workflow") || name.includes("job") || name.includes("run") || name.includes("artifact")) return "actions";
   if (name.includes("release") || name.includes("tag")) return "releases";
   if (name.includes("commit")) return "commits";
-  if (name.includes("user") || name.includes("organization")) return "user";
+  if (name.includes("user") || name.includes("organization") || name.includes("health")) return "user";
   return "repositories";
 }
 
@@ -81,6 +81,8 @@ const DOMAIN_ALIASES = {
   ci: "actions",
   workflow: "actions",
   workflows: "actions",
+  artifact: "actions",
+  artifacts: "actions",
   tags: "releases",
   tag: "releases",
   users: "user",
@@ -88,6 +90,11 @@ const DOMAIN_ALIASES = {
   hooks: "webhooks",
   alerts: "security",
   dependabot: "security",
+  system: "user",
+  health: "user",
+  diagnostics: "user",
+  protection: "repositories",
+  branch_protection: "repositories",
 };
 
 /**
@@ -110,14 +117,38 @@ function extractParameterSummary(inputSchema) {
   return { required, properties };
 }
 
+function formatActionsAsMarkdown(result) {
+  if (result.message) {
+    let md = `## GitHub Action Catalog\n\n${result.message}\n\n### Available Domains\n\n`;
+    for (const [d, count] of Object.entries(result.available_domains || {})) {
+      md += `- **${d}**: ${count} actions\n`;
+    }
+    return md;
+  }
+
+  let md = `### GitHub Actions (${result.total_matches} total matches, showing ${result.returned_actions})\n\n`;
+  md += `| Action | Domain | Mutating | Description |\n`;
+  md += `| :--- | :--- | :--- | :--- |\n`;
+  for (const a of result.actions) {
+    const mut = a.mutating ? "Yes" : "No";
+    const desc = (a.description || "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+    md += `| \`${a.action}\` | ${a.domain} | ${mut} | ${desc} |\n`;
+  }
+  return md;
+}
+
 /**
- * Searches the 75-action catalog.
- * Supports keyword search, domain filtering, and read-only status.
+ * Searches the action catalog.
+ * Supports keyword search, domain filtering, and format toggle ('json' | 'markdown').
  */
-export function findActions(query = "", domain = "") {
+export function findActions(queryOrOpts = "", domain = "", format = "json") {
+  const query = typeof queryOrOpts === "object" ? queryOrOpts.query : queryOrOpts;
+  const targetDomainStr = typeof queryOrOpts === "object" ? queryOrOpts.domain : domain;
+  const outputFormat = typeof queryOrOpts === "object" ? queryOrOpts.format || "json" : format;
+
   let actions = Array.from(ACTION_CATALOG.values());
 
-  const targetDomain = domain ? (DOMAIN_ALIASES[domain.toLowerCase()] || domain.toLowerCase()) : null;
+  const targetDomain = targetDomainStr ? (DOMAIN_ALIASES[targetDomainStr.toLowerCase()] || targetDomainStr.toLowerCase()) : null;
   if (targetDomain) {
     actions = actions.filter((a) => a.domain.toLowerCase() === targetDomain);
   }
@@ -131,12 +162,12 @@ export function findActions(query = "", domain = "") {
   }
 
   // If no filters were provided, return catalog domain breakdown to avoid dumping thousands of tokens
-  if (!query && !domain) {
+  if (!query && !targetDomainStr) {
     const domainCounts = {};
     for (const a of Array.from(ACTION_CATALOG.values())) {
       domainCounts[a.domain] = (domainCounts[a.domain] || 0) + 1;
     }
-    return {
+    const overview = {
       message: `GitHub Action Catalog contains ${ACTION_CATALOG.size} actions across ${Object.keys(domainCounts).length} domains. Query by domain or search keyword to retrieve parameter schemas.`,
       available_domains: domainCounts,
       daily_driver_eager_tools: [
@@ -146,6 +177,7 @@ export function findActions(query = "", domain = "") {
       ],
       usage_hint: "Call github_find_actions(query: 'pull request') or github_find_actions(domain: 'issues') to inspect parameter signatures.",
     };
+    return outputFormat === "markdown" ? formatActionsAsMarkdown(overview) : overview;
   }
 
   // Cap results at 15 matches with full schemas to preserve token budget
@@ -157,18 +189,20 @@ export function findActions(query = "", domain = "") {
     parameters: extractParameterSummary(a.inputSchema),
   }));
 
-  return {
+  const result = {
     total_matches: actions.length,
     returned_actions: matches.length,
     actions: matches,
     ...(actions.length > 15 ? { notice: `${actions.length - 15} additional actions matched. Refine your query string for narrower results.` } : {}),
   };
+
+  return outputFormat === "markdown" ? formatActionsAsMarkdown(result) : result;
 }
 
 /**
  * Dispatches action execution with safety guards and output compression.
  */
-export async function executeAction(actionName, params = {}) {
+export async function executeAction(actionName, params = {}, options = {}) {
   const actionDef = ACTION_CATALOG.get(actionName);
   if (!actionDef) {
     const available = Array.from(ACTION_CATALOG.keys())
@@ -187,7 +221,12 @@ export async function executeAction(actionName, params = {}) {
   const rawResult = await actionDef.handler(params);
   // Apply token compression output projection
   const projected = projectOutput(rawResult);
-  return projected !== undefined ? projected : rawResult;
+  const finalResult = projected !== undefined ? projected : rawResult;
+  const requestedFormat = options.format || (params && params.format);
+  if (requestedFormat === "markdown") {
+    return jsonToMarkdown(finalResult);
+  }
+  return finalResult;
 }
 
 /**

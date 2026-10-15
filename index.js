@@ -24,6 +24,7 @@ import {
   GetCommitSchema,
   commitHandlers,
 } from "./src/tools/commits.js";
+import { jsonToMarkdown } from "./src/helpers.js";
 
 // Meta Discovery & Execution Tool Schemas
 export const GithubFindActionsSchema = z.object({
@@ -53,6 +54,11 @@ export const GithubFindActionsSchema = z.object({
     .describe(
       "Optional domain filter to restrict discovery to a specific functional category"
     ),
+  format: z
+    .enum(["json", "markdown"])
+    .optional()
+    .default("json")
+    .describe("Output format: 'json' (default, structured object) or 'markdown' (compact human/LLM-readable text table)"),
 });
 
 export const GithubExecuteActionSchema = z.object({
@@ -73,6 +79,11 @@ export const GithubExecuteActionSchema = z.object({
     .describe(
       "Alias for params (for cross-client compatibility)"
     ),
+  format: z
+    .enum(["json", "markdown"])
+    .optional()
+    .default("json")
+    .describe("Output format: 'json' (default) or 'markdown' (compact human/LLM-readable text)"),
 });
 
 // The 5-Tool Hybrid Architecture (2026 AI-Native Standard)
@@ -144,10 +155,44 @@ const EAGER_TOOLS = [
   },
 ];
 
+function formatResult(result, format = "json") {
+  if (result && Array.isArray(result.content)) {
+    return result;
+  }
+  if (typeof result === "string") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: result,
+        },
+      ],
+    };
+  }
+  if (format === "markdown") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: jsonToMarkdown(result),
+        },
+      ],
+    };
+  }
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(result, null, 2),
+      },
+    ],
+  };
+}
+
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "2.0.1",
+    version: "2.1.0",
   },
   {
     capabilities: {
@@ -178,36 +223,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
 
   try {
-    let result;
     if (name === "github_find_actions") {
       const parsed = GithubFindActionsSchema.parse(args);
-      result = findActions(parsed.query, parsed.domain);
-    } else if (name === "github_execute_action") {
-      const parsed = GithubExecuteActionSchema.parse(args);
-      const actionParams = parsed.params || parsed.parameters || {};
-      result = await executeAction(parsed.action, actionParams);
-    } else if (name === "get_file_contents") {
-      result = await repositoryHandlers.get_file_contents(args);
-      result = projectOutput(result) || result;
-    } else if (name === "get_repository") {
-      result = await repositoryHandlers.get_repository(args);
-      result = projectOutput(result) || result;
-    } else if (name === "get_commit") {
-      result = await commitHandlers.get_commit(args);
-      result = projectOutput(result) || result;
-    } else {
-      // Direct action invocation fallback for seamless backwards compatibility
-      result = await executeAction(name, args);
+      const result = findActions(parsed.query, parsed.domain, parsed.format);
+      return formatResult(result, parsed.format);
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: typeof result === "string" ? result : JSON.stringify(result, null, 2),
-        },
-      ],
-    };
+    if (name === "github_execute_action") {
+      const parsed = GithubExecuteActionSchema.parse(args);
+      const actionParams = parsed.params || parsed.parameters || {};
+      const result = await executeAction(parsed.action, actionParams, { format: parsed.format });
+      return formatResult(result, parsed.format);
+    }
+
+    if (name === "get_file_contents") {
+      const raw = await repositoryHandlers.get_file_contents(args);
+      const result = projectOutput(raw) || raw;
+      return formatResult(result, args?.format);
+    }
+
+    if (name === "get_repository") {
+      const raw = await repositoryHandlers.get_repository(args);
+      const result = projectOutput(raw) || raw;
+      return formatResult(result, args?.format);
+    }
+
+    if (name === "get_commit") {
+      const raw = await commitHandlers.get_commit(args);
+      const result = projectOutput(raw) || raw;
+      return formatResult(result, args?.format);
+    }
+
+    // Direct action invocation fallback for seamless backwards compatibility
+    const result = await executeAction(name, args, { format: args?.format });
+    return formatResult(result, args?.format);
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -224,7 +273,7 @@ async function runServer() {
   const modeStr = isReadOnly() ? " [READ-ONLY MODE: mutating actions disabled]" : "";
   const legacyStr = shouldExposeAllTools() ? " [LEGACY MODE: all tools exposed]" : " [HYBRID 5-TOOL MODE]";
   console.error(
-    `GitHub MCP Server v2.0.1 running on stdio (${ACTION_CATALOG.size} actions in catalog)${modeStr}${legacyStr}`
+    `GitHub MCP Server v2.1.0 running on stdio (${ACTION_CATALOG.size} actions in catalog)${modeStr}${legacyStr}`
   );
 }
 

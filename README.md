@@ -1,196 +1,55 @@
-# @sumirati/mcp-github
+# GitHub MCP Server (`@sumirati/mcp-github`)
 
-Model Context Protocol (MCP) server for GitHub REST API, engineered specifically for autonomous AI agents and developer workflows.
+A modern, 2026 AI-native Model Context Protocol (MCP) server for GitHub REST API, engineered for autonomous AI agents and developer workflows.
 
-Architecturally aligned with `@sumirati/mcp-gitlab`, this server implements the **5-Tool Hybrid Architecture (2026 AI-Native Standard)** with a strict **Token Economy First** design, native zero-dependency HTTP client, and a **3-Tier Read-Only** security guard.
+[![npm version](https://img.shields.io/npm/v/@sumirati/mcp-github.svg)](https://www.npmjs.com/package/@sumirati/mcp-github)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-sumirati%2Fmcp--github-181717?logo=github)](https://github.com/sumirati/mcp-github)
 
 ---
 
-## 1. Architectural Mandate: The 5-Tool Hybrid Architecture (2026 Standard)
+## What makes v2 Unique: The 2026 5-Tool Hybrid Standard
 
-Exposing 50–100+ eager tool definitions floods every LLM completion with thousands of redundant schema tokens ("System Prompt Tax") and degrades reasoning coherence. 
+In early MCP servers, exposing 50–100+ eager tool definitions flooded every LLM turn with thousands of redundant schema tokens ("System Prompt Tax") and degraded reasoning coherence.
 
-`@sumirati/mcp-github` exposes **exactly 5 eager tools** to the client:
-1. **Meta Discovery Tool (`github_find_actions`)**: Dynamic discovery tool for searching the catalog of 75 GitHub actions across 12 domains. It returns parameter schemas on-demand.
-2. **Meta Execution Tool (`github_execute_action`)**: Universal execution dispatcher with strict input validation and recursive token projection filters.
-3. **Eager Daily Driver #1 (`get_file_contents`)**: Instant file reading or directory listing without cloning.
-4. **Eager Daily Driver #2 (`get_repository`)**: Instant repository inspection, metadata, topics, and clone URLs.
-5. **Eager Daily Driver #3 (`get_commit`)**: Instant commit inspection, author details, and token-capped diffs.
+Architecturally aligned with `@sumirati/mcp-gitlab`, `@sumirati/mcp-github` solves this with a **5-Tool Hybrid Surface**:
+- **Glama TDQS Coherence Tier A (5/5)**: By exposing exactly 5 tools to the client, the server sits in the ideal 3–15 tool coherence sweet spot.
+- **Ultra-Lean System Prompt Tax**: Drops schema overhead from ~14.7k tokens down to **~450 tokens** (97% reduction), preserving context windows and maximizing LLM prompt-cache hits.
+- **Zero-Hop Hourly Drivers**: The 3 operations developers and agents use constantly (`get_file_contents`, `get_repository`, `get_commit`) remain eager tools for instant zero-hop execution.
+- **100% Platform Access on Demand**: The entire platform surface of **79 actions across 13 domains** is accessible on-demand via dynamic action discovery (`github_find_actions` $\rightarrow$ `github_execute_action`), supporting both JSON and Markdown output (`format: "json" | "markdown"`).
+- **Resilient Fallback**: If an agent directly invokes any catalog action name (e.g. `list_pull_requests`), the server dynamically executes it with full input validation and projection.
 
-```
-                    ┌──────────────────────────────────────────────┐
-                    │               LLM Context Window             │
-                    │   5 Eager Tools (~900 tokens vs ~14.7k tax)  │
-                    └──────┬──────────────────────┬──────────┬─────┘
-                           │                      │          │
-             get_file_contents             get_repository  get_commit
-             (Daily Driver #1)             (Daily Driver #2)(Daily Driver #3)
-                           │                      │          │
-                           ▼                      ▼          ▼
-            ┌────────────────────────────┐ ┌─────────────────────────┐
-            │   github_find_actions      │ │  github_execute_action  │
-            │ (Search 75-Action Catalog) │ │ (Execute any of the 75) │
-            └──────────────┬─────────────┘ └───────────┬─────────────┘
-                           │                           │
-                           ▼                           ▼
-            ┌────────────────────────────────────────────────────────┐
-            │         Recursive Output Projection Filter             │
-            │ (Strips _links, avatar_url, node_id, 70%+ token save)  │
-            └──────────────────────────┬─────────────────────────────┘
-                                       │
-                                       ▼
-                             GitHub REST API v3
+```text
+LLM Prompt Context (~450 tokens total):
+├── 1. github_find_actions(query, [domain], [format])     [Meta Discovery]
+├── 2. github_execute_action(action, params, [format])   [Meta Dynamic Execution]
+├── 3. get_file_contents(owner, repo, path)               [Eager Daily Driver #1]
+├── 4. get_repository(owner, repo)                        [Eager Daily Driver #2]
+└── 5. get_commit(owner, repo, ref)                       [Eager Daily Driver #3]
+
+Under the hood (Dynamic Registry):
+└── 79 Curated Actions across 13 Domains (with 70%+ token reduction projections)
 ```
 
 ---
 
-## 2. Token Economy & Output Projection Filters
+## Core Capabilities Across 13 Domains
 
-Raw GitHub REST API responses are notoriously heavy (often 30KB–100KB per Issue or PR). `@sumirati/mcp-github` enforces strict token economy:
-
-- **System Prompt Tax Reduction (>93% savings)**: Shrinks MCP tool definition footprint from ~14.7k tokens down to **~900 tokens**.
-- **Recursive Output Projection Filter (`projectOutput`)**: Automatically strips redundant metadata fields (`_links`, `avatar_url`, `gravatar_id`, `node_id`, `site_admin`, user navigation URLs, internal API links, and null/empty fields) before payloads reach the LLM, guaranteeing **70%+ output token savings**.
-- **Unified Diff Truncation**: PR and commit diffs are capped by line count (`max_diff_lines`, default: 400).
-- **Safe Log Tailing**: CI workflow job logs extract the failure tail (`tail_lines`, default: 200) instead of megabyte log dumps.
-
----
-
-## 3. The 5 Eager Tools
-
-| Tool Name | Type | Description |
-| :--- | :---: | :--- |
-| `github_find_actions` | Discovery | Search the 75-action catalog by keyword or domain filter. Returns schemas on demand. |
-| `github_execute_action` | Execution | Dispatches any catalog action with input validation and token compression. |
-| `get_file_contents` | Daily Driver | Read file contents (Base64 auto-decoded) or directory entries at any git ref. |
-| `get_repository` | Daily Driver | Inspect repository metadata, default branch, visibility, topics, and clone URLs. |
-| `get_commit` | Daily Driver | Inspect commit metadata, author details, message, and token-budget capped diffs. |
-
-### Tool Annotations (Glama TDQS Tier A Compliant)
-All tools include explicit MCP annotations:
-- `readOnlyHint`: Boolean flag marking side-effect-free operations.
-- `destructiveHint`: Boolean flag marking permanent modifications or deletions.
-- `idempotentHint`: Boolean flag indicating safe replayability.
-- `openWorldHint`: Explicit indication of network-bound execution.
+1. **Enterprise Observability & Diagnostics**: End-to-end API latency, authentication verification, remaining rate limits, and read-only status (`system_health_check`).
+2. **Repositories & Governance**: Full repository lifecycle, branch management, branch protection rules (`get_branch_protection`), file reading (auto Base64-decoded), atomic multi-file commits, and repository topics.
+3. **Pull Requests & Code Reviews**: PR lifecycle (`create`, `update`, `merge`), review comments, inline diff reviews, and two-stage diff inspection with lockfile filtering.
+4. **Issues & Milestones**: Issue tracking, milestone assignment, progress notes, and label management.
+5. **CI/CD & GitHub Actions**: Workflow inspection, workflow runs, job status, build artifacts (`list_workflow_run_artifacts`, `get_workflow_run_artifact`), log tailing, run cancel/retry, and action triggers.
+6. **Releases & Tags**: Release publishing, tag creation, asset inspection, and release notes management.
+7. **Actions Variables & Secrets**: Manage repository and environment variables for automated CI/CD pipelines.
+8. **Collaborators & Permissions**: Audit and manage repository collaborators and permission levels.
+9. **Security & Dependabot**: Audit Dependabot security alerts and vulnerability reports.
+10. **Gists & Snippets**: Full gist lifecycle for sharing code templates and configurations.
+11. **Webhooks & Integrations**: Audit repository webhooks and subscribed event triggers.
 
 ---
 
-## 4. The 75-Action Catalog (via `github_execute_action`)
-
-All 75 operations can be discovered via `github_find_actions` and executed via `github_execute_action`:
-
-### 1. Repositories (11 actions)
-- `search_repositories`: Search repositories with queries and filters.
-- `get_repository`: Get repository metadata, stats, and default branch.
-- `create_repository` *(mutating)*: Create a new repository under user or organization.
-- `get_file_contents`: Read file or directory content with automatic Base64 decoding.
-- `create_or_update_file` *(mutating)*: Create or update a file with commit message.
-- `delete_file` *(mutating)*: Delete a file from a repository branch.
-- `list_branches`: List repository branches.
-- `get_branch`: Get branch details and protection status.
-- `create_branch` *(mutating)*: Create a branch off a branch or commit SHA.
-- `delete_branch` *(mutating)*: Delete a branch (protected from deleting default branch).
-- `fork_repository` *(mutating)*: Fork a repository into user or organization namespace.
-
-### 2. Commits & Statuses (4 actions)
-- `list_commits`: List commits in a repository with author, message, and SHA summaries.
-- `get_commit`: Get detailed commit info, file stats, and token-capped diffs.
-- `get_commit_status`: Get combined CI status checks and context states for a commit.
-- `create_commit_status` *(mutating)*: Create or update a CI commit status check.
-
-### 3. Pull Requests (11 actions)
-- `list_pull_requests`: List PRs with summarized metadata.
-- `get_pull_request`: Fetch detailed PR description, state, and mergeability.
-- `get_pull_request_diff`: Retrieve token-sliced unified diff.
-- `create_pull_request` *(mutating)*: Create a new pull request.
-- `update_pull_request` *(mutating)*: Update PR title, body, state, or target branch.
-- `merge_pull_request` *(mutating)*: Merge PR (merge, squash, or rebase).
-- `list_pull_request_comments`: List inline review comments.
-- `create_pull_request_comment` *(mutating)*: Add inline diff comment.
-- `create_pull_request_reply` *(mutating)*: Reply to an existing review thread.
-- `list_pull_request_reviews`: List PR reviews with submitter and state.
-- `create_pull_request_review` *(mutating)*: Submit an approval, change request, or review comment.
-
-### 4. Issues & Labels (8 actions)
-- `list_issues`: List issues (excluding PRs) with summary metadata.
-- `get_issue`: Get issue description and metadata.
-- `create_issue` *(mutating)*: Create a new issue.
-- `update_issue` *(mutating)*: Update issue fields, labels, state, or assignees.
-- `list_issue_comments`: List comments on an issue.
-- `create_issue_comment` *(mutating)*: Post a comment on an issue.
-- `list_labels`: List repository labels.
-- `create_label` *(mutating)*: Create a repository label.
-
-### 5. Milestones (4 actions)
-- `list_milestones`: List milestones with state, open/closed issues, and due dates.
-- `get_milestone`: Get details of a specific milestone.
-- `create_milestone` *(mutating)*: Create a milestone with title, description, and due date.
-- `update_milestone` *(mutating)*: Update milestone title, state, description, or due date.
-
-### 6. Collaborators (4 actions)
-- `list_collaborators`: List repository collaborators and their role names.
-- `get_collaborator_permission`: Check specific user permission level on a repository.
-- `add_collaborator` *(mutating)*: Add or invite a collaborator with permissions.
-- `remove_collaborator` *(mutating)*: Remove a collaborator from a repository.
-
-### 7. Actions Variables & Secrets (6 actions)
-- `list_actions_variables`: List GitHub Actions configuration variables.
-- `get_actions_variable`: Get a specific repository variable by name.
-- `create_actions_variable` *(mutating)*: Create a configuration variable for Actions.
-- `update_actions_variable` *(mutating)*: Update value of an existing Actions variable.
-- `delete_actions_variable` *(mutating)*: Delete an Actions variable.
-- `list_actions_secrets`: List Actions secret names and last updated timestamps (values redacted).
-
-### 8. Gists (5 actions)
-- `list_gists`: List public or user gists with file summaries.
-- `get_gist`: Get a gist by ID including file contents and descriptions.
-- `create_gist` *(mutating)*: Create a new public or secret gist with one or more files.
-- `update_gist` *(mutating)*: Update gist description or file contents.
-- `delete_gist` *(mutating)*: Delete a gist by ID.
-
-### 9. GitHub Actions & CI (8 actions)
-- `list_workflows`: List CI/CD workflow files.
-- `list_workflow_runs`: List workflow runs with status and conclusions.
-- `get_workflow_run`: Inspect a specific workflow execution.
-- `list_workflow_run_jobs`: List jobs and steps.
-- `get_job_logs`: Fetch and safely tail the execution log.
-- `trigger_workflow` *(mutating)*: Dispatch a workflow with inputs.
-- `cancel_workflow_run` *(mutating)*: Cancel a running workflow.
-- `rerun_workflow` *(mutating)*: Re-run a completed workflow.
-
-### 10. Releases & Git Tags (5 actions)
-- `list_releases`: List releases and assets.
-- `get_release`: Fetch release by tag or ID.
-- `create_release` *(mutating)*: Publish a release.
-- `list_tags`: List Git tags.
-- `create_tag` *(mutating)*: Create a tag reference.
-
-### 11. Webhooks & Topics (4 actions)
-- `get_repository_topics`: Get topic tags for a repository.
-- `set_repository_topics` *(mutating)*: Replace repository topic tags.
-- `list_repository_webhooks`: List configured repository webhooks.
-- `get_repository_webhook`: Get webhook configuration and active events.
-
-### 12. Security & Dependabot (1 action)
-- `list_dependabot_alerts`: List Dependabot vulnerability alerts and severity levels.
-
-### 13. User & Organizations (4 actions)
-- `get_authenticated_user`: Retrieve authenticated user profile.
-- `get_user`: Retrieve public profile of a user.
-- `list_user_organizations`: List organizations for current user.
-- `list_accessible_repositories`: List accessible repositories.
-
----
-
-## 5. Security: 3-Tier Read-Only Mode (`GITHUB_READ_ONLY=true`)
-
-When `GITHUB_READ_ONLY=true` is set, the server enforces safety across three redundant layers:
-1. **Catalog Layer**: `github_find_actions` flags mutating tools and `github_execute_action` blocks any mutating action before execution.
-2. **Dispatch Guard**: Invocations of mutating actions reject immediately with descriptive errors.
-3. **HTTP Client Interceptor**: `src/client.js` blocks any non-`GET` and non-`HEAD` request from being dispatched to GitHub.
-
----
-
-## 6. Quickstart & Installation
+## Quickstart & Installation
 
 ### Option 1: Run with `npx` (No installation needed)
 
@@ -211,14 +70,13 @@ mcp-github
 git clone https://github.com/sumirati/mcp-github.git
 cd mcp-github
 npm install
-node index.js
+npm test
+npm start
 ```
 
 ---
 
-## 7. Configuration & Environment Variables
-
-Configure the following environment variables:
+## Environment Configuration
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
@@ -226,11 +84,11 @@ Configure the following environment variables:
 | `GITHUB_TOKEN` | No | — | Alternative token variable name |
 | `GITHUB_API_URL` | No | `https://api.github.com` | Base API URL (or GitHub Enterprise Server) |
 | `GITHUB_READ_ONLY` | No | `false` | Enable 3-tier read-only mode (`true`, `1`, `yes`) |
-| `GITHUB_TOOL_DOMAINS` | No | `*` (all) | Comma-separated domain filter (e.g. `'repositories,pull-requests,issues'`) |
+| `GITHUB_EXPOSE_ALL_TOOLS` | No | `false` | Set to `true` (or `GITHUB_EXPOSE_LEGACY_TOOLS=true`) to expose all 79 tools directly on `ListTools` for legacy clients |
 
 ---
 
-## 8. Client Configuration
+## Client Configuration
 
 ### Google Antigravity / Claude Desktop / Cursor
 
@@ -244,7 +102,7 @@ Add to your MCP configuration file (`mcp_config.json` or `claude_desktop_config.
       "command": "npx",
       "args": ["-y", "@sumirati/mcp-github"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here",
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "<your-github-token>",
         "GITHUB_READ_ONLY": "false"
       }
     }
@@ -260,7 +118,7 @@ Add to your MCP configuration file (`mcp_config.json` or `claude_desktop_config.
       "command": "node",
       "args": ["/path/to/mcp-github/index.js"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here",
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "<your-github-token>",
         "GITHUB_READ_ONLY": "false"
       }
     }
@@ -270,13 +128,146 @@ Add to your MCP configuration file (`mcp_config.json` or `claude_desktop_config.
 
 ---
 
-## 9. Acknowledgements & Attribution
+## Complete Action Catalog Reference (75 Actions)
 
-- **jmrplens/gitlab-mcp-server**: Dynamic action discovery and meta-dispatcher pattern concepts ([https://github.com/jmrplens/gitlab-mcp-server](https://github.com/jmrplens/gitlab-mcp-server)).
-- **@sumirati/mcp-gitlab**: Sibling project architecture, 3-tier read-only safety, and token projection standards ([https://gitlab.com/sumirati/mcp-gitlab](https://gitlab.com/sumirati/mcp-gitlab)).
+All 75 actions feature strict input validation and 2-tier field-mask projections:
+
+### 1. The 5 Client-Exposed Tools (Hybrid Mode)
+| Tool | Type | Description |
+| :--- | :---: | :--- |
+| `github_find_actions` | Meta | Search and discover available GitHub operations across all 13 domains with compact parameter schemas |
+| `github_execute_action` | Meta | Execute any discovered GitHub platform action with input validation and token-optimized projection |
+| `get_file_contents` | Eager | Read raw file contents (auto Base64 decoded) or directory listings at any ref without cloning |
+| `get_repository` | Eager | Retrieve repository metadata, visibility, description, default branch, clone URLs, and topics |
+| `get_commit` | Eager | Inspect Git commit details, author info, and token-capped file diffs |
+
+### 2. Repositories & Branches (11 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `search_repositories` | Search public or accessible GitHub repositories by query | No |
+| `create_repository` | Create a new repository for the authenticated user or organization | **Yes** |
+| `fork_repository` | Fork a repository to your account or specified organization | **Yes** |
+| `list_branches` | List branches with commit SHAs and protection status | No |
+| `get_branch` | Get detailed branch metadata, protection rules, and head commit | No |
+| `create_branch` | Create a new git branch from an existing branch or SHA | **Yes** |
+| `delete_branch` | Delete a git branch (destructive) | **Yes** |
+| `create_or_update_file` | Create or update a single file with a commit | **Yes** |
+| `delete_file` | Delete a file from a repository with a commit | **Yes** |
+| `push_files` | Atomically commit multiple file additions, edits, or deletions | **Yes** |
+
+### 3. Commits & Statuses (4 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_commits` | List chronological commit history filtered by branch, date, or author | No |
+| `get_commit_status` | Get combined CI status checks and commit statuses for a ref | No |
+| `create_commit_status` | Post a status check result to a specific commit SHA | **Yes** |
+
+### 4. Pull Requests & Reviews (11 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_pull_requests` | List PRs filtered by state (`open`, `closed`, `all`), base branch, or sort | No |
+| `get_pull_request` | Get detailed PR metadata, mergeability status, head, and base refs | No |
+| `get_pull_request_diff` | Get token-capped unified diff of PR changes with max line limits | No |
+| `create_pull_request` | Create a new pull request with head, base, title, and body | **Yes** |
+| `update_pull_request` | Update title, body, state, or base branch of an existing PR | **Yes** |
+| `merge_pull_request` | Merge a pull request with merge, squash, or rebase strategy | **Yes** |
+| `list_pull_request_comments` | List inline review comments on a pull request | No |
+| `create_pull_request_comment` | Create an inline review comment on a specific diff line | **Yes** |
+| `create_pull_request_reply` | Reply directly to an existing inline review comment thread | **Yes** |
+| `list_pull_request_reviews` | List formal reviews submitted on a pull request | No |
+| `create_pull_request_review` | Submit an `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` review | **Yes** |
+
+### 5. Issues & Labels (8 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_issues` | List repository issues filtered by state, labels, assignee, or milestone | No |
+| `get_issue` | Get detailed issue description, assignees, labels, and state | No |
+| `create_issue` | Create a new issue with title, body, labels, and assignees | **Yes** |
+| `update_issue` | Modify title, body, state (`open`/`closed`), or assignees | **Yes** |
+| `list_issue_comments` | List conversation comments on an issue | No |
+| `create_issue_comment` | Post a comment note to an issue | **Yes** |
+| `list_labels` | List all repository labels with names and color hex codes | No |
+| `create_label` | Create a new label with name, color, and description | **Yes** |
+
+### 6. Milestones (4 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_milestones` | List repository milestones with open/closed counts and due dates | No |
+| `get_milestone` | Get milestone metadata and progress statistics | No |
+| `create_milestone` | Create a new milestone with title, description, and due date | **Yes** |
+| `update_milestone` | Update milestone title, description, state, or due date | **Yes** |
+
+### 7. Collaborators & Roles (4 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_collaborators` | List collaborators with role names (`admin`, `push`, `pull`) | No |
+| `get_collaborator_permission` | Check permission level of a specific user on a repository | No |
+| `add_collaborator` | Invite or add a collaborator with designated permission | **Yes** |
+| `remove_collaborator` | Remove collaborator access from a repository | **Yes** |
+
+### 8. Actions Variables & Secrets (6 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_actions_variables` | List repository Actions variables | No |
+| `get_actions_variable` | Get variable value and metadata | No |
+| `create_actions_variable` | Create a new Actions variable | **Yes** |
+| `update_actions_variable` | Update existing Actions variable value | **Yes** |
+| `delete_actions_variable` | Delete an Actions variable | **Yes** |
+| `list_actions_secrets` | List repository Actions secrets names (values redacted) | No |
+
+### 9. GitHub Actions & CI (8 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_workflows` | List GitHub Actions workflows defined in `.github/workflows/` | No |
+| `list_workflow_runs` | List workflow execution runs filtered by branch, event, or status | No |
+| `get_workflow_run` | Get detailed execution status, conclusion, and timing | No |
+| `list_workflow_run_jobs` | List individual jobs in a workflow run with step conclusions | No |
+| `get_job_logs` | Safely tail failure logs from a workflow job with line truncation | No |
+| `trigger_workflow` | Dispatch a manual `workflow_dispatch` run on a ref | **Yes** |
+| `cancel_workflow_run` | Cancel an in-progress workflow run | **Yes** |
+| `rerun_workflow` | Re-run a failed or completed workflow | **Yes** |
+
+### 10. Releases & Git Tags (5 actions)
+| Action | Description | Mutating? |
+| :--- | :--- | :---: |
+| `list_releases` | List project releases with changelogs and asset metadata | No |
+| `get_release` | Get specific release notes and downloadable assets | No |
+| `create_release` | Publish a release tied to a git tag with markdown release notes | **Yes** |
+| `list_tags` | List git tags with commit hashes | No |
+| `create_tag` | Create an annotated git tag pointing to a SHA | **Yes** |
+
+### 11. Webhooks, Gists, Security & User Context (18 actions)
+- **Webhooks & Topics (4 actions)**: `list_repository_topics`, `set_repository_topics`, `list_webhooks`, `create_webhook`.
+- **Gists (5 actions)**: `list_gists`, `get_gist`, `create_gist`, `update_gist`, `delete_gist`.
+- **Security (1 action)**: `list_dependabot_alerts`.
+- **User & Orgs (4 actions)**: `get_authenticated_user`, `get_user`, `list_user_organizations`, `list_accessible_repositories`.
 
 ---
 
-## 10. License
+## Token Economy & Output Projection Filters
 
-MIT License — Copyright (c) 2026 sumirati@buggycode.net.
+Raw GitHub REST API responses are notoriously heavy (often 30KB–100KB per Issue or PR). `@sumirati/mcp-github` enforces strict token economy:
+
+- **System Prompt Tax Reduction (>93% savings)**: Shrinks MCP tool definition footprint from ~14.7k tokens down to **~450 tokens**.
+- **Recursive Output Projection Filter (`projectOutput`)**: Automatically strips redundant metadata fields (`_links`, `avatar_url`, `gravatar_id`, `node_id`, `site_admin`, user navigation URLs, internal API links, and null/empty fields) before payloads reach the LLM, guaranteeing **70%+ output token savings**.
+- **Unified Diff Truncation**: PR and commit diffs are capped by line count (`max_diff_lines`, default: 400).
+- **Safe Log Tailing**: CI workflow job logs extract the failure tail (`tail_lines`, default: 200) instead of megabyte log dumps.
+
+---
+
+## Acknowledgements & Lineage
+
+This project incorporates architectural concepts, schemas, and patterns from:
+- **[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk)** (MIT License) — Copyright (c) Anthropic, PBC.
+- **[`zod`](https://github.com/colinhacks/zod)** (MIT License) — Colin McDonnell.
+- **GitHub REST API Specifications** — GitHub, Inc.
+- **[`jmrplens/gitlab-mcp-server`](https://github.com/jmrplens/gitlab-mcp-server)** — Dynamic action discovery and meta-dispatcher pattern concepts.
+- **[`@sumirati/mcp-gitlab`](https://gitlab.com/sumirati/mcp-gitlab)** — Sibling project architecture, 3-tier read-only mode, and token projection standards.
+
+See [`NOTICE`](./NOTICE) for complete third-party attribution details.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE) — Copyright (c) 2026 sumirati@buggycode.net.

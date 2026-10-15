@@ -9,7 +9,7 @@ export const SearchRepositoriesSchema = z.object({
   sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Field to sort results by: 'stars', 'forks', 'help-wanted-issues', or 'updated'"),
   order: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(20).describe("Number of results per page (default: 20, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(20).describe("Number of results per page (default: 20, max: 100)"),
 });
 
 export const GetRepositorySchema = RepoParamsSchema.extend({});
@@ -43,8 +43,9 @@ export const DeleteFileSchema = RepoParamsSchema.extend({
 });
 
 export const ListBranchesSchema = RepoParamsSchema.extend({
+  protected: z.boolean().optional().describe("Filter branches by protected status (true/false) directly pushed upstream"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of results per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of results per page (default: 30, max: 100)"),
 });
 
 export const CreateBranchSchema = RepoParamsSchema.extend({
@@ -61,6 +62,10 @@ export const DeleteBranchSchema = RepoParamsSchema.extend({
   branch: z.string().describe("Branch name to delete (cannot delete the repository default branch)"),
 });
 
+export const GetBranchProtectionSchema = RepoParamsSchema.extend({
+  branch: z.string().describe("Exact branch name to inspect branch protection rules for (e.g. 'main')"),
+});
+
 export const ForkRepositorySchema = RepoParamsSchema.extend({
   organization: z.string().optional().describe("Target organization namespace to fork into (if omitted, forks into authenticated user account)"),
 });
@@ -69,7 +74,7 @@ export const ForkRepositorySchema = RepoParamsSchema.extend({
 export const repositoryTools = [
   {
     name: "search_repositories",
-    description: "Search for repositories across GitHub or within an organization using query qualifiers (e.g. 'org:myorg language:typescript'). Use to discover repository names and metadata before cloning or inspecting. Returns token-optimized summary fields (name, owner, default_branch, stars, forks, open_issues).",
+    description: "Search for repositories across GitHub or within an organization using query qualifiers (e.g. 'org:myorg language:typescript') with capped pagination (max 100). If owner and repository name are known, prefer 'get_repository' for exact O(1) lookup.",
     inputSchema: zodToJsonSchema(SearchRepositoriesSchema),
   },
   {
@@ -102,13 +107,18 @@ export const repositoryTools = [
   },
   {
     name: "list_branches",
-    description: "List branches in a repository with protection status and head commit SHAs. Use to discover branch names before creating PRs, branching off, or switching contexts.",
+    description: "List branches in a repository with protection status and head commit SHAs. Supports upstream filtering by protected status and capped pagination (max 100). If branch name is already known, prefer 'get_branch'.",
     inputSchema: zodToJsonSchema(ListBranchesSchema),
   },
   {
     name: "get_branch",
     description: "Get detailed status of a specific branch, including branch protection rules and latest commit details. Use to verify branch existence or protection policies before merging or deleting.",
     inputSchema: zodToJsonSchema(GetBranchSchema),
+  },
+  {
+    name: "get_branch_protection",
+    description: "Retrieve comprehensive branch protection rules for a specific Git branch, including required status checks, required reviews, admin enforcement, and force-push / deletion restrictions.",
+    inputSchema: zodToJsonSchema(GetBranchProtectionSchema),
   },
   {
     name: "create_branch",
@@ -267,6 +277,7 @@ export const repositoryHandlers = {
       page: parsed.page.toString(),
       per_page: parsed.per_page.toString(),
     });
+    if (parsed.protected !== undefined) q.set("protected", parsed.protected.toString());
     const res = await githubRequest(`/repos/${owner}/${repo}/branches?${q.toString()}`);
     const items = Array.isArray(res) ? res : res.items || [];
     return items.map(summarizeBranch);
@@ -277,6 +288,38 @@ export const repositoryHandlers = {
     const parsed = GetBranchSchema.parse(args);
     const res = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(parsed.branch)}`);
     return summarizeBranch(res);
+  },
+
+  get_branch_protection: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = GetBranchProtectionSchema.parse(args);
+    const res = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(parsed.branch)}/protection`);
+    return {
+      branch: parsed.branch,
+      required_status_checks: res.required_status_checks
+        ? {
+            strict: res.required_status_checks.strict,
+            contexts: res.required_status_checks.contexts,
+          }
+        : null,
+      enforce_admins: res.enforce_admins?.enabled || false,
+      required_pull_request_reviews: res.required_pull_request_reviews
+        ? {
+            dismiss_stale_reviews: res.required_pull_request_reviews.dismiss_stale_reviews,
+            require_code_owner_reviews: res.required_pull_request_reviews.require_code_owner_reviews,
+            required_approving_review_count: res.required_pull_request_reviews.required_approving_review_count,
+          }
+        : null,
+      restrictions: res.restrictions
+        ? {
+            users: res.restrictions.users?.map((u) => u.login),
+            teams: res.restrictions.teams?.map((t) => t.slug),
+            apps: res.restrictions.apps?.map((a) => a.slug),
+          }
+        : null,
+      allow_force_pushes: res.allow_force_pushes?.enabled || false,
+      allow_deletions: res.allow_deletions?.enabled || false,
+    };
   },
 
   create_branch: async (args) => {

@@ -8,11 +8,13 @@ export const ListIssuesSchema = RepoParamsSchema.extend({
   labels: z.union([z.string(), z.array(z.string())]).optional().describe("Label names to filter by (comma-separated string or array of strings, e.g. 'bug,enhancement')"),
   assignee: z.string().optional().describe("Filter by assignee username, or '*' for any assigned issue, or 'none' for unassigned"),
   creator: z.string().optional().describe("Filter issues created by this GitHub username"),
+  mentioned: z.string().optional().describe("Filter issues to those that mention this GitHub username directly pushed upstream"),
   milestone: z.union([z.string(), z.number()]).optional().describe("Filter by milestone number, or '*' for any milestone, or 'none' for no milestone"),
+  since: z.string().optional().describe("Only show issues updated at or after this time (ISO 8601 or YYYY-MM-DDTHH:MM:SSZ)"),
   sort: z.enum(["created", "updated", "comments"]).optional().default("created").describe("Sort issues by: 'created', 'updated', or 'comments' (default: 'created')"),
   direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of issues per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of issues per page (default: 30, max: 100)"),
 });
 
 export const GetIssueSchema = RepoParamsSchema.extend({
@@ -41,7 +43,7 @@ export const UpdateIssueSchema = RepoParamsSchema.extend({
 export const ListIssueCommentsSchema = RepoParamsSchema.extend({
   issue_number: z.number().describe("Issue number to retrieve comments for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
 });
 
 export const CreateIssueCommentSchema = RepoParamsSchema.extend({
@@ -51,7 +53,7 @@ export const CreateIssueCommentSchema = RepoParamsSchema.extend({
 
 export const ListLabelsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(50).describe("Number of labels per page (default: 50, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(50).describe("Number of labels per page (default: 50, max: 100)"),
 });
 
 export const CreateLabelSchema = RepoParamsSchema.extend({
@@ -63,7 +65,7 @@ export const CreateLabelSchema = RepoParamsSchema.extend({
 export const issueTools = [
   {
     name: "list_issues",
-    description: "Search and filter repository issue tickets by state, assignee, milestone, or labels. Note: Unlike the raw GitHub API, this tool filters out pull requests so only genuine issues are returned. For pull requests, use list_pull_requests instead. Returns concise metadata (numbers, titles, state reasons, labels) to minimize context token usage.",
+    description: "Search and filter repository issue tickets with upstream indexed parameters (state, labels, assignee, creator, mentioned, milestone, since) and capped pagination (max 100). Filters out pull requests. If the issue number is already known, prefer 'get_issue' for exact O(1) lookup.",
     inputSchema: zodToJsonSchema(ListIssuesSchema),
   },
   {
@@ -120,7 +122,9 @@ export const issueHandlers = {
     });
     if (parsed.assignee) q.set("assignee", parsed.assignee);
     if (parsed.creator) q.set("creator", parsed.creator);
+    if (parsed.mentioned) q.set("mentioned", parsed.mentioned);
     if (parsed.milestone !== undefined) q.set("milestone", parsed.milestone.toString());
+    if (parsed.since) q.set("since", parsed.since);
     if (parsed.labels) {
       const formatted = formatLabels(parsed.labels);
       if (formatted && formatted.length > 0) {

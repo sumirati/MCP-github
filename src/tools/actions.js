@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { zodToJsonSchema, RepoParamsSchema, normalizeRepoParams } from "../schemas.js";
 import { githubRequest } from "../client.js";
-import { summarizeWorkflow, summarizeWorkflowRun, summarizeWorkflowJob, tailLog } from "../helpers.js";
+import { summarizeWorkflow, summarizeWorkflowRun, summarizeWorkflowJob, summarizeArtifact, tailLog } from "../helpers.js";
 
 export const ListWorkflowsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of workflows per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of workflows per page (default: 30, max: 100)"),
 });
 
 export const ListWorkflowRunsSchema = RepoParamsSchema.extend({
@@ -16,8 +16,10 @@ export const ListWorkflowRunsSchema = RepoParamsSchema.extend({
     .enum(["completed", "action_required", "cancelled", "failure", "neutral", "skipped", "stale", "success", "timed_out", "in_progress", "queued", "requested", "waiting"])
     .optional()
     .describe("Filter runs by execution status or conclusion (e.g. 'completed', 'success', 'failure', 'in_progress', 'queued')"),
+  actor: z.string().optional().describe("Filter workflow runs triggered by a specific GitHub username"),
+  created: z.string().optional().describe("Filter workflow runs created with date query (e.g. '>2026-10-01' or '2026-10-01..2026-10-15')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(20).describe("Number of workflow runs per page (default: 20, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(20).describe("Number of workflow runs per page (default: 20, max: 100)"),
 });
 
 export const GetWorkflowRunSchema = RepoParamsSchema.extend({
@@ -27,6 +29,8 @@ export const GetWorkflowRunSchema = RepoParamsSchema.extend({
 export const ListWorkflowRunJobsSchema = RepoParamsSchema.extend({
   run_id: z.number().describe("Unique numeric identifier of the workflow run"),
   filter: z.enum(["latest", "all"]).optional().default("latest").describe("Filter jobs: 'latest' (latest execution attempt) or 'all' (all attempts)"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of jobs per page (default: 30, max: 100)"),
 });
 
 export const GetJobLogsSchema = RepoParamsSchema.extend({
@@ -48,11 +52,31 @@ export const RerunWorkflowSchema = RepoParamsSchema.extend({
   run_id: z.number().describe("Numeric identifier of the completed or failed workflow run to re-run"),
 });
 
+export const ListWorkflowRunArtifactsSchema = RepoParamsSchema.extend({
+  run_id: z.number().describe("Unique numeric identifier of the workflow run"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of artifacts per page (default: 30, max: 100)"),
+});
+
+export const GetWorkflowRunArtifactSchema = RepoParamsSchema.extend({
+  artifact_id: z.number().describe("Unique numeric identifier of the artifact"),
+});
+
 export const actionTools = [
   {
     name: "list_workflows",
     description: "List GitHub Actions CI/CD workflow files configured in a repository (.github/workflows). Use to discover workflow names and IDs before triggering or inspecting runs.",
     inputSchema: zodToJsonSchema(ListWorkflowsSchema),
+  },
+  {
+    name: "list_workflow_run_artifacts",
+    description: "List artifacts produced by a specific GitHub Actions workflow run, including file size, download archive URLs, and expiration timestamps. Use to discover generated build outputs, test logs, or release binaries.",
+    inputSchema: zodToJsonSchema(ListWorkflowRunArtifactsSchema),
+  },
+  {
+    name: "get_workflow_run_artifact",
+    description: "Retrieve metadata and download archive URL for a specific GitHub Actions build artifact by its numeric artifact ID. Use when downloading build deliverables or inspecting individual artifacts.",
+    inputSchema: zodToJsonSchema(GetWorkflowRunArtifactSchema),
   },
   {
     name: "list_workflow_runs",
@@ -119,6 +143,8 @@ export const actionHandlers = {
     if (parsed.branch) q.set("branch", parsed.branch);
     if (parsed.event) q.set("event", parsed.event);
     if (parsed.status) q.set("status", parsed.status);
+    if (parsed.actor) q.set("actor", parsed.actor);
+    if (parsed.created) q.set("created", parsed.created);
 
     const endpoint = parsed.workflow_id
       ? `/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(parsed.workflow_id)}/runs?${q.toString()}`
@@ -141,7 +167,12 @@ export const actionHandlers = {
   list_workflow_run_jobs: async (args) => {
     const { owner, repo } = normalizeRepoParams(args);
     const parsed = ListWorkflowRunJobsSchema.parse(args);
-    const res = await githubRequest(`/repos/${owner}/${repo}/actions/runs/${parsed.run_id}/jobs?filter=${parsed.filter}`);
+    const q = new URLSearchParams({
+      filter: parsed.filter,
+      page: parsed.page.toString(),
+      per_page: parsed.per_page.toString(),
+    });
+    const res = await githubRequest(`/repos/${owner}/${repo}/actions/runs/${parsed.run_id}/jobs?${q.toString()}`);
     return {
       total_count: res.total_count,
       jobs: (res.jobs || []).map(summarizeWorkflowJob),
@@ -194,5 +225,26 @@ export const actionHandlers = {
     return await githubRequest(`/repos/${owner}/${repo}/actions/runs/${parsed.run_id}/rerun`, {
       method: "POST",
     });
+  },
+
+  list_workflow_run_artifacts: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = ListWorkflowRunArtifactsSchema.parse(args);
+    const q = new URLSearchParams({
+      page: parsed.page.toString(),
+      per_page: parsed.per_page.toString(),
+    });
+    const res = await githubRequest(`/repos/${owner}/${repo}/actions/runs/${parsed.run_id}/artifacts?${q.toString()}`);
+    return {
+      total_count: res.total_count,
+      artifacts: (res.artifacts || []).map(summarizeArtifact),
+    };
+  },
+
+  get_workflow_run_artifact: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = GetWorkflowRunArtifactSchema.parse(args);
+    const res = await githubRequest(`/repos/${owner}/${repo}/actions/artifacts/${parsed.artifact_id}`);
+    return summarizeArtifact(res);
   },
 };

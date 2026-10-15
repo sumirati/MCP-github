@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "../schemas.js";
-import { githubRequest } from "../client.js";
+import { githubRequest, isReadOnly } from "../client.js";
 import { summarizeUser, summarizeRepository } from "../helpers.js";
+
+export const SystemHealthCheckSchema = z.object({});
 
 export const GetAuthenticatedUserSchema = z.object({});
 
@@ -25,6 +27,11 @@ export const ListAccessibleRepositoriesSchema = z.object({
 
 export const userTools = [
   {
+    name: "system_health_check",
+    description: "Perform end-to-end connectivity, latency, rate limit quota, and permission diagnostics against the GitHub API. Verifies token validity, authenticated account details, remaining rate limits, and active read-only policy.",
+    inputSchema: zodToJsonSchema(SystemHealthCheckSchema),
+  },
+  {
     name: "get_authenticated_user",
     description: "Retrieve profile metadata (login, name, email, public_repos, followers) for the currently authenticated GitHub token. Use to verify token identity and scope.",
     inputSchema: zodToJsonSchema(GetAuthenticatedUserSchema),
@@ -47,6 +54,35 @@ export const userTools = [
 ];
 
 export const userHandlers = {
+  system_health_check: async () => {
+    const startTime = Date.now();
+    const [userRes, rateLimitRes] = await Promise.all([
+      githubRequest("/user"),
+      githubRequest("/rate_limit").catch(() => null),
+    ]);
+    const latencyMs = Date.now() - startTime;
+    return {
+      status: "healthy",
+      api_latency_ms: latencyMs,
+      read_only_mode: isReadOnly(),
+      authenticated_user: {
+        login: userRes.login,
+        id: userRes.id,
+        name: userRes.name,
+        type: userRes.type,
+        plan: userRes.plan?.name,
+      },
+      rate_limit: rateLimitRes?.rate
+        ? {
+            limit: rateLimitRes.rate.limit,
+            remaining: rateLimitRes.rate.remaining,
+            reset: new Date(rateLimitRes.rate.reset * 1000).toISOString(),
+            used: rateLimitRes.rate.used,
+          }
+        : null,
+    };
+  },
+
   get_authenticated_user: async () => {
     const res = await githubRequest("/user");
     return summarizeUser(res);

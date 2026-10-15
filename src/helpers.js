@@ -336,3 +336,74 @@ export function projectOutput(val) {
 
   return Object.keys(result).length > 0 ? result : undefined;
 }
+
+export function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+export function summarizeArtifact(a) {
+  if (!a) return null;
+  return {
+    id: a.id,
+    name: a.name,
+    size_in_bytes: a.size_in_bytes,
+    size_human: formatBytes(a.size_in_bytes),
+    expired: a.expired || false,
+    archive_download_url: a.archive_download_url,
+    created_at: a.created_at,
+    expires_at: a.expires_at,
+  };
+}
+
+/**
+ * Converts structured JSON/object responses into clean, compact Markdown
+ */
+export function jsonToMarkdown(data) {
+  if (data === null || data === undefined) return "";
+  if (typeof data !== "object") return String(data);
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return "_No items returned._";
+    if (typeof data[0] === "object" && data[0] !== null) {
+      const keys = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
+      if (keys.length <= 8) {
+        const header = `| ${keys.join(" | ")} |`;
+        const divider = `| ${keys.map(() => ":---").join(" | ")} |`;
+        const rows = data.map((item) =>
+          `| ${keys
+            .map((k) => {
+              const v = item[k];
+              if (v === null || v === undefined) return "";
+              if (typeof v === "object") return "`" + JSON.stringify(v) + "`";
+              return String(v).replace(/\|/g, "\\|").replace(/\n/g, " ");
+            })
+            .join(" | ")} |`
+        );
+        return [header, divider, ...rows].join("\n");
+      }
+    }
+    return data
+      .map((item) => `- ${typeof item === "object" ? JSON.stringify(item) : item}`)
+      .join("\n");
+  }
+
+  const lines = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (v === null || v === undefined) continue;
+    if (Array.isArray(v)) {
+      lines.push(`### ${k}\n\n` + jsonToMarkdown(v));
+    } else if (typeof v === "object") {
+      lines.push(`**${k}**:`);
+      for (const [subK, subV] of Object.entries(v)) {
+        lines.push(`  - **${subK}**: ${typeof subV === "object" ? JSON.stringify(subV) : subV}`);
+      }
+    } else {
+      lines.push(`- **${k}**: ${v}`);
+    }
+  }
+  return lines.join("\n");
+}
