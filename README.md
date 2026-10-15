@@ -208,7 +208,7 @@ mcp-github
 ### Option 3: Local Clone
 
 ```bash
-git clone http://192.168.99.9/buggycode/mcp-github.git
+git clone https://github.com/sumirati/mcp-github.git
 cd mcp-github
 npm install
 node index.js

@@ -1,7 +1,7 @@
 # Release Management Runbook (`release-mgmt.md`)
 
 This runbook documents the standard release process for `@sumirati/mcp-github` across all supported platforms:
-- **Git Repositories**: Self-hosted GitLab ([`buggycode/mcp-github`](http://192.168.99.9/buggycode/mcp-github)), [GitHub (`sumirati/mcp-github`)](https://github.com/sumirati/mcp-github), and [GitLab.com (`sumirati/mcp-github`)](https://gitlab.com/sumirati/mcp-github)
+- **Git Repositories**: Self-hosted GitLab ([`buggycode/mcp-github`](https://gitlab.example.com/buggycode/mcp-github)), [GitHub (`sumirati/mcp-github`)](https://github.com/sumirati/mcp-github), and [GitLab.com (`sumirati/mcp-github`)](https://gitlab.com/sumirati/mcp-github)
 - **Package Registry**: [npm (`@sumirati/mcp-github`)](https://www.npmjs.com/package/@sumirati/mcp-github)
 - **MCP Catalog**: [Model Context Protocol Registry (`io.github.sumirati/mcp-github`)](https://registry.modelcontextprotocol.io/)
 
@@ -92,7 +92,7 @@ Once the `vX.Y.Z` tag is synced, publish formal releases with release notes:
 5. Click **Publish release**.
 
 #### B. GitLab Release (Self-Hosted / GitLab.com)
-1. Navigate to your GitLab project: **Deploy** $\rightarrow$ **Releases** $\rightarrow$ **New release** (e.g. `http://192.168.99.9/buggycode/mcp-github/-/releases/new`).
+1. Navigate to your GitLab project: **Deploy** $\rightarrow$ **Releases** $\rightarrow$ **New release** (e.g. `https://gitlab.example.com/buggycode/mcp-github/-/releases/new`).
 2. Under **Tag name**, select the existing tag: `vX.Y.Z`.
 3. Set **Release title**: `vX.Y.Z`.
 4. Enter release notes and changelog in the **Release notes** markdown field.

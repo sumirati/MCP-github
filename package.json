@@ -15,15 +15,16 @@
     "NOTICE"
   ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/v2-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/mcp-protocol-test.js"
   },
   "repository": {
     "type": "git",
-    "url": "http://192.168.99.9/buggycode/mcp-github.git"
+    "url": "git+https://github.com/sumirati/mcp-github.git"
   },
-  "homepage": "http://192.168.99.9/buggycode/mcp-github#readme",
+  "homepage": "https://github.com/sumirati/mcp-github#readme",
   "bugs": {
-    "url": "http://192.168.99.9/buggycode/mcp-github/issues"
+    "url": "https://github.com/sumirati/mcp-github/issues"
   },
   "mcpName": "io.github.sumirati/mcp-github",
   "keywords": [
