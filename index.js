@@ -9,16 +9,26 @@ import { z } from "zod";
 
 import { isReadOnly } from "./src/client.js";
 import { repositoryTools, repositoryHandlers } from "./src/tools/repositories.js";
+import { commitTools, commitHandlers } from "./src/tools/commits.js";
 import { pullRequestTools, pullRequestHandlers } from "./src/tools/pull-requests.js";
 import { issueTools, issueHandlers } from "./src/tools/issues.js";
+import { milestoneTools, milestoneHandlers } from "./src/tools/milestones.js";
+import { collaboratorTools, collaboratorHandlers } from "./src/tools/collaborators.js";
+import { variableTools, variableHandlers } from "./src/tools/variables.js";
+import { gistTools, gistHandlers } from "./src/tools/gists.js";
 import { actionTools, actionHandlers } from "./src/tools/actions.js";
 import { releaseTools, releaseHandlers } from "./src/tools/releases.js";
 import { userTools, userHandlers } from "./src/tools/user.js";
 
 const TOOLS = [
   ...repositoryTools,
+  ...commitTools,
   ...pullRequestTools,
   ...issueTools,
+  ...milestoneTools,
+  ...collaboratorTools,
+  ...variableTools,
+  ...gistTools,
   ...actionTools,
   ...releaseTools,
   ...userTools,
@@ -26,8 +36,13 @@ const TOOLS = [
 
 const HANDLERS = {
   ...repositoryHandlers,
+  ...commitHandlers,
   ...pullRequestHandlers,
   ...issueHandlers,
+  ...milestoneHandlers,
+  ...collaboratorHandlers,
+  ...variableHandlers,
+  ...gistHandlers,
   ...actionHandlers,
   ...releaseHandlers,
   ...userHandlers,
@@ -36,7 +51,7 @@ const HANDLERS = {
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "1.0.0",
+    version: "1.1.0",
   },
   {
     capabilities: {
