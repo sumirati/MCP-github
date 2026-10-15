@@ -1,4 +1,6 @@
 import assert from "node:assert";
+import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import {
   ACTION_CATALOG,
   findActions,
@@ -90,5 +92,27 @@ assert(typeof mdResults === "string", "Expected markdown output string");
 assert(mdResults.includes("| Action | Domain | Mutating | Description |"), "Expected markdown table header");
 assert(mdResults.includes("`list_workflows`"), "Expected list_workflows in markdown table");
 console.log("[PASS] findActions format: 'markdown' rendered valid Markdown table");
+
+// 13. Registry metadata & server.json validation
+const serverJson = JSON.parse(fs.readFileSync(new URL("../server.json", import.meta.url), "utf8"));
+const pkgJson = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+
+assert.strictEqual(serverJson.version, pkgJson.version, `server.json version (${serverJson.version}) must match package.json (${pkgJson.version})`);
+assert.strictEqual(serverJson.packages?.[0]?.version, pkgJson.version, `server.json package version must match package.json (${pkgJson.version})`);
+assert.ok(serverJson.description.length <= 100, `server.json description length (${serverJson.description.length} chars) must be <= 100 chars`);
+console.log(`[PASS] server.json schema & version parity verified (v${serverJson.version}, desc: ${serverJson.description.length} chars)`);
+
+const hasPublisher = spawnSync("which", ["mcp-publisher"]).status === 0 || fs.existsSync(`${process.env.HOME}/bin/mcp-publisher`);
+if (hasPublisher) {
+  const pubCmd = spawnSync("which", ["mcp-publisher"]).status === 0 ? "mcp-publisher" : `${process.env.HOME}/bin/mcp-publisher`;
+  const pubCheck = spawnSync(pubCmd, ["validate"], { stdio: "pipe", encoding: "utf8" });
+  if (pubCheck.status === 0) {
+    console.log("[PASS] mcp-publisher validate passed against official MCP registry");
+  } else {
+    throw new Error(`mcp-publisher validate failed:\n${pubCheck.stderr || pubCheck.stdout}`);
+  }
+} else {
+  console.log("[SKIP] mcp-publisher not found in PATH, skipping live remote registry check");
+}
 
 console.log("\nALL @sumirati/mcp-github v2.1.0 CHECKS PASSED SUCCESSFULLY!");
