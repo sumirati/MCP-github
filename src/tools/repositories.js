@@ -5,126 +5,126 @@ import { summarizeRepository, summarizeBranch } from "../helpers.js";
 
 // Schemas
 export const SearchRepositoriesSchema = z.object({
-  query: z.string().describe("Search query to filter GitHub repositories (e.g. 'language:javascript stars:>100')"),
-  sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field"),
-  order: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort order"),
-  page: z.number().optional().default(1).describe("Page number (default: 1)"),
-  per_page: z.number().optional().default(20).describe("Results per page (default: 20, max: 100)"),
+  query: z.string().describe("Search query string supporting GitHub qualifiers (e.g. 'org:myorg stars:>50', 'language:typescript topic:mcp')"),
+  sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Field to sort results by: 'stars', 'forks', 'help-wanted-issues', or 'updated'"),
+  order: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(20).describe("Number of results per page (default: 20, max: 100)"),
 });
 
 export const GetRepositorySchema = RepoParamsSchema.extend({});
 
 export const CreateRepositorySchema = z.object({
-  name: z.string().describe("Repository name"),
-  description: z.string().optional().describe("Short repository description"),
-  private: z.boolean().optional().default(false).describe("Whether the repository is private"),
-  auto_init: z.boolean().optional().default(true).describe("Initialize repository with an initial README commit"),
-  org: z.string().optional().describe("Optional organization name. If omitted, creates under authenticated user."),
+  name: z.string().describe("Repository name (alphanumeric with hyphens/dots, e.g. 'my-api-server')"),
+  description: z.string().optional().describe("Short project description"),
+  private: z.boolean().optional().default(false).describe("Whether the repository visibility is private (true) or public (false, default)"),
+  auto_init: z.boolean().optional().default(true).describe("Initialize repository with an initial commit containing a README (default: true)"),
+  org: z.string().optional().describe("Optional target organization name. If omitted, creates under the authenticated user account"),
 });
 
 export const GetFileContentsSchema = RepoParamsSchema.extend({
-  path: z.string().describe("Path to the file or directory in repository (e.g. 'README.md' or 'src/index.js')"),
-  ref: z.string().optional().describe("Branch name, tag, or commit SHA (default: default branch / HEAD)"),
+  path: z.string().describe("Relative path to file or directory in repository (e.g. 'README.md', 'src/index.js', or '' for root)"),
+  ref: z.string().optional().describe("Git reference (branch name, tag, or commit SHA) to read from (default: default branch / HEAD)"),
 });
 
 export const CreateOrUpdateFileSchema = RepoParamsSchema.extend({
-  path: z.string().describe("File path in repository (e.g. 'src/index.js')"),
-  content: z.string().describe("Full text content of the file"),
-  message: z.string().describe("Git commit message"),
-  branch: z.string().optional().describe("Branch to commit to (default: repository default branch)"),
-  sha: z.string().optional().describe("Blob SHA of file being replaced. Required if updating an existing file."),
+  path: z.string().describe("Relative file path in repository to create or modify (e.g. 'src/index.js')"),
+  content: z.string().describe("Full plain text content to write into the file"),
+  message: z.string().describe("Git commit message explaining the change"),
+  branch: z.string().optional().describe("Target branch to commit changes to (default: repository default branch)"),
+  sha: z.string().optional().describe("Current blob SHA of the file being overwritten. Recommended when modifying existing files to prevent conflicts; if omitted, latest blob SHA will be resolved automatically"),
 });
 
 export const DeleteFileSchema = RepoParamsSchema.extend({
-  path: z.string().describe("Path of file to delete"),
-  message: z.string().describe("Git commit message"),
-  sha: z.string().describe("Blob SHA of the file being deleted"),
-  branch: z.string().optional().describe("Branch to commit to"),
+  path: z.string().describe("Relative file path in repository to delete"),
+  message: z.string().describe("Git commit message explaining the deletion"),
+  sha: z.string().describe("Current blob SHA of the file being deleted (required by GitHub API to prevent race conditions)"),
+  branch: z.string().optional().describe("Target branch to delete file from (default: repository default branch)"),
 });
 
 export const ListBranchesSchema = RepoParamsSchema.extend({
-  page: z.number().optional().default(1).describe("Page number"),
-  per_page: z.number().optional().default(30).describe("Results per page"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of results per page (default: 30, max: 100)"),
 });
 
 export const CreateBranchSchema = RepoParamsSchema.extend({
-  branch: z.string().describe("Name of the new branch to create (e.g. 'feature/auth')"),
-  from_branch: z.string().optional().describe("Source branch name to branch off from (e.g. 'main')"),
+  branch: z.string().describe("Name of the new branch to create (e.g. 'feature/auth-provider')"),
+  from_branch: z.string().optional().describe("Source branch name to branch off from (e.g. 'main', default: 'main')"),
   sha: z.string().optional().describe("Exact commit SHA to point the new branch to (takes precedence over from_branch)"),
 });
 
 export const GetBranchSchema = RepoParamsSchema.extend({
-  branch: z.string().describe("Branch name to retrieve (e.g. 'main', 'feature/auth')"),
+  branch: z.string().describe("Exact branch name to inspect (e.g. 'main', 'feature/auth')"),
 });
 
 export const DeleteBranchSchema = RepoParamsSchema.extend({
-  branch: z.string().describe("Branch name to delete (cannot delete default branch)"),
+  branch: z.string().describe("Branch name to delete (cannot delete the repository default branch)"),
 });
 
 export const ForkRepositorySchema = RepoParamsSchema.extend({
-  organization: z.string().optional().describe("Target organization to fork into (defaults to user account)"),
+  organization: z.string().optional().describe("Target organization namespace to fork into (if omitted, forks into authenticated user account)"),
 });
 
 // Tool Definitions
 export const repositoryTools = [
   {
     name: "search_repositories",
-    description: "Search for GitHub repositories with token-saving summary metadata",
+    description: "Search for repositories across GitHub or within an organization using query qualifiers (e.g. 'org:myorg language:typescript'). Use to discover repository names and metadata before cloning or inspecting. Returns token-optimized summary fields (name, owner, default_branch, stars, forks, open_issues).",
     inputSchema: zodToJsonSchema(SearchRepositoriesSchema),
   },
   {
     name: "get_repository",
-    description: "Get repository metadata, description, default branch, and stats",
+    description: "Get repository metadata, visibility, description, default branch, clone URL, and statistics for an exact owner/repo. Use when verifying repository settings or checking default branch name.",
     inputSchema: zodToJsonSchema(GetRepositorySchema),
   },
   {
     name: "create_repository",
-    description: "Create a new repository under user or organization account",
+    description: "Create a new GitHub repository under the authenticated user account or a specified organization. Requires write permissions and GITHUB_READ_ONLY=false. Auto-initializes with a default README commit unless auto_init is false.",
     inputSchema: zodToJsonSchema(CreateRepositorySchema),
     mutating: true,
   },
   {
     name: "get_file_contents",
-    description: "Read file or directory content from a repository",
+    description: "Read current file contents or list directory entries at a specified git ref. Automatically decodes Base64 file contents into plain text UTF-8 in 'decoded_content'. Use when inspecting source code or project structure. For viewing historical commit diffs, use get_commit instead.",
     inputSchema: zodToJsonSchema(GetFileContentsSchema),
   },
   {
     name: "create_or_update_file",
-    description: "Create or update a single file in a GitHub repository",
+    description: "Create a new file or overwrite an existing file on a branch in a single atomic commit. If updating, provide the file's current blob SHA in 'sha' (or leave empty to auto-resolve). Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateOrUpdateFileSchema),
     mutating: true,
   },
   {
     name: "delete_file",
-    description: "Delete a file from a GitHub repository",
+    description: "Delete an existing file from a branch in a git commit. Requires the current blob SHA to guard against concurrent overwrites. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(DeleteFileSchema),
     mutating: true,
   },
   {
     name: "list_branches",
-    description: "List branches in a repository",
+    description: "List branches in a repository with protection status and head commit SHAs. Use to discover branch names before creating PRs, branching off, or switching contexts.",
     inputSchema: zodToJsonSchema(ListBranchesSchema),
   },
   {
     name: "get_branch",
-    description: "Get detailed information about a specific branch",
+    description: "Get detailed status of a specific branch, including branch protection rules and latest commit details. Use to verify branch existence or protection policies before merging or deleting.",
     inputSchema: zodToJsonSchema(GetBranchSchema),
   },
   {
     name: "create_branch",
-    description: "Create a new branch pointing to an existing branch or commit SHA",
+    description: "Create a new git branch pointing to a commit SHA or branched from an existing branch (defaults to 'main'). Use before committing changes or opening a pull request. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateBranchSchema),
     mutating: true,
   },
   {
     name: "delete_branch",
-    description: "Delete a branch from a GitHub repository (protected from deleting default branch)",
+    description: "Delete a branch from a repository. Protected: explicitly rejects requests to delete the default branch (e.g. 'main') to prevent repository breakage. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(DeleteBranchSchema),
     mutating: true,
   },
   {
     name: "fork_repository",
-    description: "Fork a repository into your user or organization namespace",
+    description: "Fork a repository into the authenticated user's account or a specified organization namespace. Use when contributing to upstream projects where direct push access is restricted. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(ForkRepositorySchema),
     mutating: true,
   },
