@@ -4,77 +4,77 @@ import { githubRequest } from "../client.js";
 import { summarizePullRequest, sliceDiff, summarizePullRequestReview } from "../helpers.js";
 
 export const ListPullRequestsSchema = RepoParamsSchema.extend({
-  state: z.enum(["open", "closed", "all"]).optional().default("open").describe("State of pull requests (default: open)"),
-  head: z.string().optional().describe("Filter by head user or branch (e.g. 'feature-branch' or 'user:branch')"),
-  base: z.string().optional().describe("Filter by base branch (e.g. 'main')"),
-  sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().default("created"),
-  direction: z.enum(["asc", "desc"]).optional().default("desc"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  state: z.enum(["open", "closed", "all"]).optional().default("open").describe("Filter by PR state: 'open' (default), 'closed', or 'all'"),
+  head: z.string().optional().describe("Filter by head user or branch (e.g. 'feature-branch' or 'octocat:feature-branch')"),
+  base: z.string().optional().describe("Filter by base target branch (e.g. 'main')"),
+  sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().default("created").describe("Sort PRs by: 'created', 'updated', 'popularity', or 'long-running' (default: 'created')"),
+  direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of pull requests per page (default: 30, max: 100)"),
 });
 
 export const GetPullRequestSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number (e.g. 42)"),
+  pull_number: z.number().describe("The pull request number (e.g. 42)"),
 });
 
 export const GetPullRequestDiffSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
+  pull_number: z.number().describe("The pull request number to fetch unified diff for (e.g. 42)"),
   max_lines: z.number().optional().default(400).describe("Maximum diff lines to return to preserve token context (default: 400)"),
 });
 
 export const CreatePullRequestSchema = RepoParamsSchema.extend({
-  title: z.string().describe("Title of the pull request"),
-  head: z.string().describe("Branch containing changes (e.g. 'feature/auth')"),
-  base: z.string().describe("Branch into which changes should be merged (e.g. 'main')"),
-  body: z.string().optional().describe("Pull request description"),
-  draft: z.boolean().optional().default(false).describe("Whether to create as draft PR"),
+  title: z.string().describe("Title summarizing the pull request changes"),
+  head: z.string().describe("Source branch containing commits (e.g. 'feature/auth')"),
+  base: z.string().describe("Target branch into which changes should be merged (e.g. 'main')"),
+  body: z.string().optional().describe("Detailed pull request description markdown"),
+  draft: z.boolean().optional().default(false).describe("Whether to open the PR as a draft (default: false)"),
 });
 
 export const UpdatePullRequestSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  title: z.string().optional().describe("Updated PR title"),
-  body: z.string().optional().describe("Updated PR body"),
-  state: z.enum(["open", "closed"]).optional().describe("Open or close PR"),
-  base: z.string().optional().describe("Target branch to merge into"),
+  pull_number: z.number().describe("Pull request number to modify"),
+  title: z.string().optional().describe("Updated pull request title"),
+  body: z.string().optional().describe("Updated description markdown"),
+  state: z.enum(["open", "closed"]).optional().describe("New state: 'open' to reopen or 'closed' to close without merging"),
+  base: z.string().optional().describe("New target base branch"),
 });
 
 export const MergePullRequestSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  commit_title: z.string().optional().describe("Commit message title"),
-  commit_message: z.string().optional().describe("Extended commit message"),
-  merge_method: z.enum(["merge", "squash", "rebase"]).optional().default("merge").describe("Merge strategy"),
+  pull_number: z.number().describe("Pull request number to merge"),
+  commit_title: z.string().optional().describe("Custom merge commit title"),
+  commit_message: z.string().optional().describe("Custom extended commit log message"),
+  merge_method: z.enum(["merge", "squash", "rebase"]).optional().default("merge").describe("Merge strategy: 'merge' (create merge commit), 'squash' (squash all commits into one), or 'rebase' (rebase commits onto base branch). Default: 'merge'"),
 });
 
 export const ListPullRequestCommentsSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  pull_number: z.number().describe("Pull request number to list inline comments for"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
 });
 
 export const CreatePullRequestCommentSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  body: z.string().describe("Comment text"),
-  commit_id: z.string().describe("SHA of commit being commented on"),
-  path: z.string().describe("Relative path of file being commented on"),
-  line: z.number().describe("Line index in diff to attach comment to"),
+  pull_number: z.number().describe("Pull request number to comment on"),
+  body: z.string().describe("Markdown text of the inline review comment"),
+  commit_id: z.string().describe("Full SHA of the specific commit being commented on"),
+  path: z.string().describe("Relative repository file path of the file being commented on"),
+  line: z.number().describe("Line index in the unified diff to anchor the review comment"),
 });
 
 export const CreatePullRequestReplySchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number"),
-  comment_id: z.number().describe("Comment ID to reply to"),
-  body: z.string().describe("Reply text"),
+  comment_id: z.number().describe("Parent comment ID to reply to"),
+  body: z.string().describe("Markdown reply text"),
 });
 
 export const ListPullRequestReviewsSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  pull_number: z.number().describe("Pull request number to list reviews for"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of reviews per page (default: 30, max: 100)"),
 });
 
 export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
-  pull_number: z.number().describe("Pull request number"),
-  event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]).describe("Review event action"),
-  body: z.string().optional().describe("Summary review comment markdown"),
+  pull_number: z.number().describe("Pull request number to review"),
+  event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]).describe("Review decision action: 'APPROVE', 'REQUEST_CHANGES', or 'COMMENT'"),
+  body: z.string().optional().describe("Overall review summary comment in markdown"),
   comments: z
     .array(
       z.object({
@@ -90,62 +90,62 @@ export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
 export const pullRequestTools = [
   {
     name: "list_pull_requests",
-    description: "List pull requests for a repository with summarized metadata",
+    description: "List and filter pull requests in a repository with token-saving summary metadata. Use when locating active PRs, checking open PR numbers, or filtering by author/branch. To view code changes, use get_pull_request_diff; for non-PR issue tickets, use list_issues.",
     inputSchema: zodToJsonSchema(ListPullRequestsSchema),
   },
   {
     name: "get_pull_request",
-    description: "Get detailed pull request information",
+    description: "Get detailed status of a specific pull request including mergeability (clean, dirty, unstable), head/base branch refs, author, and assignees. Use to check if a PR is ready to merge or blocked. Do NOT use to read code changes; use get_pull_request_diff instead.",
     inputSchema: zodToJsonSchema(GetPullRequestSchema),
   },
   {
     name: "get_pull_request_diff",
-    description: "Get token-sliced diff of a pull request",
+    description: "Retrieve unified git diff for a pull request to review code modifications. Use this tool when analyzing code changes, reviewing patches, or preparing inline comments. Do NOT use for checking PR mergeability or metadata (use get_pull_request instead). Diffs are token-optimized and automatically truncated at max_lines (default: 400 lines) to prevent LLM context overflows.",
     inputSchema: zodToJsonSchema(GetPullRequestDiffSchema),
   },
   {
     name: "create_pull_request",
-    description: "Create a new pull request",
+    description: "Create a new pull request from a head branch into a base branch. Requires write permissions and GITHUB_READ_ONLY=false. The head branch must already exist and have at least one commit difference from the base branch.",
     inputSchema: zodToJsonSchema(CreatePullRequestSchema),
     mutating: true,
   },
   {
     name: "update_pull_request",
-    description: "Update pull request title, body, or state",
+    description: "Update an existing pull request's title, body, open/closed state, or base branch. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(UpdatePullRequestSchema),
     mutating: true,
   },
   {
     name: "merge_pull_request",
-    description: "Merge a pull request (merge, squash, or rebase)",
+    description: "Merge a pull request into its base branch using merge, squash, or rebase method. Requires write/admin permissions and GITHUB_READ_ONLY=false. Ensure the PR mergeable state is clean before merging.",
     inputSchema: zodToJsonSchema(MergePullRequestSchema),
     mutating: true,
   },
   {
     name: "list_pull_request_comments",
-    description: "List review comments on a pull request",
+    description: "List inline code review comments anchored to specific diff lines of a pull request. Use when inspecting line-by-line review feedback. For overall PR review approvals or change requests, use list_pull_request_reviews instead.",
     inputSchema: zodToJsonSchema(ListPullRequestCommentsSchema),
   },
   {
     name: "create_pull_request_comment",
-    description: "Post an inline review comment on a pull request diff",
+    description: "Post an inline review comment anchored to a specific file and line in the pull request diff. Requires commit_id, path, and line index. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreatePullRequestCommentSchema),
     mutating: true,
   },
   {
     name: "create_pull_request_reply",
-    description: "Reply to an existing pull request review comment thread",
+    description: "Reply to an existing pull request review comment thread. Requires comment_id of the parent comment. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreatePullRequestReplySchema),
     mutating: true,
   },
   {
     name: "list_pull_request_reviews",
-    description: "List formal code reviews (approvals, change requests) on a pull request",
+    description: "List formal code reviews (approvals, change requests, comment summaries) submitted on a pull request. Use to check reviewer decisions and approval gates before merging.",
     inputSchema: zodToJsonSchema(ListPullRequestReviewsSchema),
   },
   {
     name: "create_pull_request_review",
-    description: "Submit a formal code review (APPROVE, REQUEST_CHANGES, or COMMENT)",
+    description: "Submit a formal code review on a pull request with an approval decision (APPROVE, REQUEST_CHANGES, or COMMENT) and optional summary body or inline comments. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreatePullRequestReviewSchema),
     mutating: true,
   },
