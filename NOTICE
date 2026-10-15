@@ -1,0 +1,6 @@
+@sumirati/mcp-github
+Copyright (c) 2026 sumirati@buggycode.net
+
+This product includes software developed as a Model Context Protocol (MCP) server
+for the GitHub REST API.
+Architecturally adapted from @sumirati/mcp-gitlab.
