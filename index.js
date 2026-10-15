@@ -51,7 +51,7 @@ const HANDLERS = {
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "1.1.0",
+    version: "1.2.0",
   },
   {
     capabilities: {
