@@ -53,6 +53,14 @@ export const CreateBranchSchema = RepoParamsSchema.extend({
   sha: z.string().optional().describe("Exact commit SHA to point the new branch to (takes precedence over from_branch)"),
 });
 
+export const GetBranchSchema = RepoParamsSchema.extend({
+  branch: z.string().describe("Branch name to retrieve (e.g. 'main', 'feature/auth')"),
+});
+
+export const DeleteBranchSchema = RepoParamsSchema.extend({
+  branch: z.string().describe("Branch name to delete (cannot delete default branch)"),
+});
+
 export const ForkRepositorySchema = RepoParamsSchema.extend({
   organization: z.string().optional().describe("Target organization to fork into (defaults to user account)"),
 });
@@ -98,9 +106,20 @@ export const repositoryTools = [
     inputSchema: zodToJsonSchema(ListBranchesSchema),
   },
   {
+    name: "get_branch",
+    description: "Get detailed information about a specific branch",
+    inputSchema: zodToJsonSchema(GetBranchSchema),
+  },
+  {
     name: "create_branch",
     description: "Create a new branch pointing to an existing branch or commit SHA",
     inputSchema: zodToJsonSchema(CreateBranchSchema),
+    mutating: true,
+  },
+  {
+    name: "delete_branch",
+    description: "Delete a branch from a GitHub repository (protected from deleting default branch)",
+    inputSchema: zodToJsonSchema(DeleteBranchSchema),
     mutating: true,
   },
   {
@@ -253,6 +272,13 @@ export const repositoryHandlers = {
     return items.map(summarizeBranch);
   },
 
+  get_branch: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = GetBranchSchema.parse(args);
+    const res = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(parsed.branch)}`);
+    return summarizeBranch(res);
+  },
+
   create_branch: async (args) => {
     const { owner, repo } = normalizeRepoParams(args);
     const parsed = CreateBranchSchema.parse(args);
@@ -279,6 +305,26 @@ export const repositoryHandlers = {
     return {
       ref: res.ref,
       sha: res.object?.sha,
+    };
+  },
+
+  delete_branch: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = DeleteBranchSchema.parse(args);
+
+    const repoInfo = await githubRequest(`/repos/${owner}/${repo}`);
+    if (repoInfo.default_branch === parsed.branch) {
+      throw new Error(`Cannot delete the default branch '${parsed.branch}' of ${owner}/${repo}`);
+    }
+
+    await githubRequest(`/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(parsed.branch)}`, {
+      method: "DELETE",
+    });
+
+    return {
+      message: `Branch '${parsed.branch}' deleted successfully from ${owner}/${repo}`,
+      branch: parsed.branch,
+      deleted: true,
     };
   },
 
