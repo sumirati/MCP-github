@@ -4,104 +4,104 @@ import { githubRequest, formatLabels } from "../client.js";
 import { summarizeIssue } from "../helpers.js";
 
 export const ListIssuesSchema = RepoParamsSchema.extend({
-  state: z.enum(["open", "closed", "all"]).optional().default("open"),
-  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Label names (comma-separated string or array)"),
-  assignee: z.string().optional().describe("Filter by assignee username ('*' for any, 'none' for unassigned)"),
-  creator: z.string().optional().describe("Filter by author username"),
-  milestone: z.union([z.string(), z.number()]).optional().describe("Milestone number or '*' for any or 'none' for unassigned"),
-  sort: z.enum(["created", "updated", "comments"]).optional().default("created"),
-  direction: z.enum(["asc", "desc"]).optional().default("desc"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  state: z.enum(["open", "closed", "all"]).optional().default("open").describe("Filter issues by state: 'open' (default), 'closed', or 'all'"),
+  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Label names to filter by (comma-separated string or array of strings, e.g. 'bug,enhancement')"),
+  assignee: z.string().optional().describe("Filter by assignee username, or '*' for any assigned issue, or 'none' for unassigned"),
+  creator: z.string().optional().describe("Filter issues created by this GitHub username"),
+  milestone: z.union([z.string(), z.number()]).optional().describe("Filter by milestone number, or '*' for any milestone, or 'none' for no milestone"),
+  sort: z.enum(["created", "updated", "comments"]).optional().default("created").describe("Sort issues by: 'created', 'updated', or 'comments' (default: 'created')"),
+  direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of issues per page (default: 30, max: 100)"),
 });
 
 export const GetIssueSchema = RepoParamsSchema.extend({
-  issue_number: z.number().describe("Issue number"),
+  issue_number: z.number().describe("The issue ticket number (e.g. 42)"),
 });
 
 export const CreateIssueSchema = RepoParamsSchema.extend({
-  title: z.string().describe("Issue title"),
-  body: z.string().optional().describe("Issue markdown body"),
-  assignees: z.array(z.string()).optional().describe("Usernames to assign"),
-  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Labels to attach"),
-  milestone: z.number().optional().describe("Milestone number to associate"),
+  title: z.string().describe("Descriptive title for the issue ticket"),
+  body: z.string().optional().describe("Markdown text containing detailed issue description, reproduction steps, or context"),
+  assignees: z.array(z.string()).optional().describe("Array of GitHub usernames to assign to this issue"),
+  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Array or comma-separated string of label names to attach"),
+  milestone: z.number().optional().describe("Milestone number to associate with this issue"),
 });
 
 export const UpdateIssueSchema = RepoParamsSchema.extend({
-  issue_number: z.number().describe("Issue number"),
-  title: z.string().optional().describe("Updated title"),
-  body: z.string().optional().describe("Updated markdown body"),
-  state: z.enum(["open", "closed"]).optional().describe("Issue state"),
-  state_reason: z.enum(["completed", "not_planned", "reopened"]).optional().describe("Reason for state change"),
-  assignees: z.array(z.string()).optional().describe("Updated assignees array"),
-  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Updated labels array"),
-  milestone: z.number().nullable().optional().describe("Milestone number or null to remove"),
+  issue_number: z.number().describe("The issue ticket number to update"),
+  title: z.string().optional().describe("Updated title for the issue"),
+  body: z.string().optional().describe("Updated description markdown text"),
+  state: z.enum(["open", "closed"]).optional().describe("New state: 'open' or 'closed'"),
+  state_reason: z.enum(["completed", "not_planned", "reopened"]).optional().describe("Reason for closing or reopening: 'completed', 'not_planned', or 'reopened'"),
+  assignees: z.array(z.string()).optional().describe("Updated array of assigned usernames (replaces existing assignees)"),
+  labels: z.union([z.string(), z.array(z.string())]).optional().describe("Updated array of label names (replaces existing labels)"),
+  milestone: z.number().nullable().optional().describe("Milestone number to associate, or null to remove milestone association"),
 });
 
 export const ListIssueCommentsSchema = RepoParamsSchema.extend({
-  issue_number: z.number().describe("Issue number"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  issue_number: z.number().describe("Issue number to retrieve comments for"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
 });
 
 export const CreateIssueCommentSchema = RepoParamsSchema.extend({
-  issue_number: z.number().describe("Issue number"),
-  body: z.string().describe("Comment markdown text"),
+  issue_number: z.number().describe("Issue number to post comment on"),
+  body: z.string().describe("Markdown text of the comment"),
 });
 
 export const ListLabelsSchema = RepoParamsSchema.extend({
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(50),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(50).describe("Number of labels per page (default: 50, max: 100)"),
 });
 
 export const CreateLabelSchema = RepoParamsSchema.extend({
-  name: z.string().describe("Label name"),
-  color: z.string().describe("6-character hex code without # (e.g. 'f29513')"),
-  description: z.string().optional().describe("Short label description"),
+  name: z.string().describe("Label name (e.g. 'bug', 'documentation', 'p1')"),
+  color: z.string().describe("6-character hexadecimal color code without '#' symbol (e.g. 'f29513', '0075ca')"),
+  description: z.string().optional().describe("Brief description explaining when this label should be applied"),
 });
 
 export const issueTools = [
   {
     name: "list_issues",
-    description: "List issues in a repository with token-saving summary metadata",
+    description: "Search and filter repository issue tickets by state, assignee, milestone, or labels. Note: Unlike the raw GitHub API, this tool filters out pull requests so only genuine issues are returned. For pull requests, use list_pull_requests instead. Returns concise metadata (numbers, titles, state reasons, labels) to minimize context token usage.",
     inputSchema: zodToJsonSchema(ListIssuesSchema),
   },
   {
     name: "get_issue",
-    description: "Get detailed issue information including full description",
+    description: "Get full details of a specific issue ticket, including markdown body, assignees, milestone, state reason, and comment count. Use when investigating a bug report or reading issue specifications.",
     inputSchema: zodToJsonSchema(GetIssueSchema),
   },
   {
     name: "create_issue",
-    description: "Create a new issue in a repository",
+    description: "Create a new issue ticket in a repository with optional labels, assignees, and milestone. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateIssueSchema),
     mutating: true,
   },
   {
     name: "update_issue",
-    description: "Update an existing issue (title, body, state, labels, assignees)",
+    description: "Update an existing issue's title, body, state ('open'/'closed'), state reason ('completed'/'not_planned'), labels, assignees, or milestone. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(UpdateIssueSchema),
     mutating: true,
   },
   {
     name: "list_issue_comments",
-    description: "List comments on an issue",
+    description: "List discussion comments on an issue ticket chronologically. Use to read conversation history, debugging updates, or user feedback on an issue.",
     inputSchema: zodToJsonSchema(ListIssueCommentsSchema),
   },
   {
     name: "create_issue_comment",
-    description: "Add a comment to an issue",
+    description: "Add a markdown comment to an issue ticket. Use to reply to discussions, log progress, or provide resolution details. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateIssueCommentSchema),
     mutating: true,
   },
   {
     name: "list_labels",
-    description: "List all labels available in a repository",
+    description: "List all labels configured in a repository with their names, descriptions, and hex color codes. Use to discover available tags before creating or updating issues.",
     inputSchema: zodToJsonSchema(ListLabelsSchema),
   },
   {
     name: "create_label",
-    description: "Create a new label in a repository",
+    description: "Create a new label in a repository with a name, description, and 6-character hex color code. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateLabelSchema),
     mutating: true,
   },
