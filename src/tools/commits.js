@@ -4,30 +4,30 @@ import { githubRequest } from "../client.js";
 import { summarizeCommit, sliceDiff } from "../helpers.js";
 
 export const ListCommitsSchema = RepoParamsSchema.extend({
-  sha: z.string().optional().describe("SHA or branch to start listing commits from (default: default branch)"),
-  path: z.string().optional().describe("Only commits containing this file path will be returned"),
-  author: z.string().optional().describe("GitHub login or email address to filter by"),
-  since: z.string().optional().describe("Only commits after this date (ISO 8601 format, e.g. '2026-01-01T00:00:00Z')"),
-  until: z.string().optional().describe("Only commits before this date (ISO 8601 format)"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  sha: z.string().optional().describe("SHA or branch to start listing commits from (default: repository default branch)"),
+  path: z.string().optional().describe("Filter to only return commits that affected this specific file path"),
+  author: z.string().optional().describe("Filter by author GitHub username or email address"),
+  since: z.string().optional().describe("Only return commits pushed on or after this timestamp (ISO 8601 format, e.g. '2026-01-01T00:00:00Z')"),
+  until: z.string().optional().describe("Only return commits pushed on or before this timestamp (ISO 8601 format)"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of commits per page (default: 30, max: 100)"),
 });
 
 export const GetCommitSchema = RepoParamsSchema.extend({
-  ref: z.string().describe("Commit SHA, branch, or tag name to inspect"),
-  file_path: z.string().optional().describe("Optional: filter diff to only inspect this specific file"),
-  max_diff_lines: z.number().optional().default(400).describe("Maximum diff lines to return (default: 400)"),
+  ref: z.string().describe("Commit SHA, branch name, or tag reference to inspect"),
+  file_path: z.string().optional().describe("Optional file path filter: only include diff and stats for this single file"),
+  max_diff_lines: z.number().optional().default(400).describe("Maximum unified diff lines to return across files to conserve LLM context tokens (default: 400)"),
 });
 
 export const commitTools = [
   {
     name: "list_commits",
-    description: "List repository commit logs with author, date, and commit message summaries",
+    description: "List repository commit history chronologically with author, date, and commit message summaries. Use to trace git history, find recent commits, or discover commit SHAs. For viewing actual line-by-line diffs of a commit, use get_commit instead.",
     inputSchema: zodToJsonSchema(ListCommitsSchema),
   },
   {
     name: "get_commit",
-    description: "Get detailed commit information, file modification manifest, stats, and token-capped diffs",
+    description: "Get detailed commit metadata, file modification statistics, and unified diffs for a specific commit SHA or ref. Use when reviewing code changes in a commit or debugging regressions. Diffs are token-budget optimized and truncated at max_diff_lines (default: 400 lines).",
     inputSchema: zodToJsonSchema(GetCommitSchema),
   },
 ];
