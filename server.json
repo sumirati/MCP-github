@@ -7,12 +7,12 @@
     "url": "https://github.com/sumirati/mcp-github",
     "source": "github"
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@sumirati/mcp-github",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "transport": {
         "type": "stdio"
       },
@@ -33,6 +33,12 @@
           "name": "GITHUB_READ_ONLY",
           "description": "Enable 3-tier read-only safety mode (true/false)",
           "default": "false",
+          "isRequired": false
+        },
+        {
+          "name": "GITHUB_TOOL_DOMAINS",
+          "description": "Comma-separated domain whitelist to restrict registered tools and preserve context window tokens (e.g. 'repositories,pull-requests,issues')",
+          "default": "*",
           "isRequired": false
         }
       ]
