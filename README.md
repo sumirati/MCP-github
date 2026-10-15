@@ -40,8 +40,13 @@ MCP-github/
     ├── helpers.js            # Payload summarizers (PRs, issues, commits, actions, releases, diffs)
     └── tools/
         ├── repositories.js   # Repos, search, files, branches
-        ├── pull-requests.js  # PRs, token-sliced diffs, review comments, thread replies
+        ├── commits.js        # Commit history, commit details with diffs
+        ├── pull-requests.js  # PRs, token-sliced diffs, review comments, reviews
         ├── issues.js         # Issues, labels, comments
+        ├── milestones.js     # Milestones and deadlines
+        ├── collaborators.js  # Repository collaborators and access levels
+        ├── variables.js      # Actions configuration variables & secret catalog
+        ├── gists.js          # Gist code snippet storage
         ├── actions.js        # Workflows, runs, safe job log tailing
         ├── releases.js       # Releases & Git tags
         └── user.js           # Current user, orgs, accessible repos
@@ -59,8 +64,14 @@ MCP-github/
 - `create_or_update_file` *(mutating)*: Create or update a file.
 - `delete_file` *(mutating)*: Delete a file from a repository branch.
 - `list_branches`: List repository branches.
+- `get_branch`: Get branch details and protection status.
 - `create_branch` *(mutating)*: Create a branch off a branch or commit SHA.
+- `delete_branch` *(mutating)*: Delete a branch (protected from deleting default branch).
 - `fork_repository` *(mutating)*: Fork a repository into user or organization namespace.
+
+### Commits (`src/tools/commits.js`)
+- `list_commits`: List commits in a repository with author, message, and SHA summaries.
+- `get_commit`: Get detailed commit information, stats, and token-budget capped diffs.
 
 ### Pull Requests (`src/tools/pull-requests.js`)
 - `list_pull_requests`: List PRs with summarized metadata.
@@ -72,6 +83,8 @@ MCP-github/
 - `list_pull_request_comments`: List inline review comments.
 - `create_pull_request_comment` *(mutating)*: Add inline diff comment.
 - `create_pull_request_reply` *(mutating)*: Reply to an existing review thread.
+- `list_pull_request_reviews`: List PR reviews with submitter, state, and commit SHA.
+- `create_pull_request_review` *(mutating)*: Submit a review (APPROVE, REQUEST_CHANGES, COMMENT).
 
 ### Issues (`src/tools/issues.js`)
 - `list_issues`: List issues (excluding PRs) with summary metadata.
@@ -82,6 +95,33 @@ MCP-github/
 - `create_issue_comment` *(mutating)*: Post a comment on an issue.
 - `list_labels`: List repository labels.
 - `create_label` *(mutating)*: Create a repository label.
+
+### Milestones (`src/tools/milestones.js`)
+- `list_milestones`: List milestones with state, open/closed issues, and due dates.
+- `get_milestone`: Get details of a specific milestone.
+- `create_milestone` *(mutating)*: Create a milestone with title, description, and due date.
+- `update_milestone` *(mutating)*: Update milestone title, state, description, or due date.
+
+### Collaborators (`src/tools/collaborators.js`)
+- `list_collaborators`: List repository collaborators and their role names.
+- `get_collaborator_permission`: Check specific user permission level on a repository.
+- `add_collaborator` *(mutating)*: Add or invite a collaborator with permissions (pull, triage, push, maintain, admin).
+- `remove_collaborator` *(mutating)*: Remove a collaborator from a repository.
+
+### Actions Variables & Secrets (`src/tools/variables.js`)
+- `list_actions_variables`: List GitHub Actions configuration variables.
+- `get_actions_variable`: Get a specific repository variable by name.
+- `create_actions_variable` *(mutating)*: Create a configuration variable for Actions.
+- `update_actions_variable` *(mutating)*: Update value of an existing Actions variable.
+- `delete_actions_variable` *(mutating)*: Delete an Actions variable.
+- `list_actions_secrets`: List Actions secret names and last updated timestamps (values redacted).
+
+### Gists (`src/tools/gists.js`)
+- `list_gists`: List public or user gists with file summaries.
+- `get_gist`: Get a gist by ID including file contents and descriptions.
+- `create_gist` *(mutating)*: Create a new public or secret gist with one or more files.
+- `update_gist` *(mutating)*: Update gist description or file contents.
+- `delete_gist` *(mutating)*: Delete a gist by ID.
 
 ### GitHub Actions (`src/tools/actions.js`)
 - `list_workflows`: List CI/CD workflow files.
@@ -108,21 +148,71 @@ MCP-github/
 
 ---
 
-## Configuration & Environment Variables
+## Quickstart & Installation
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub Personal Access Token (classic or fine-grained) | *Required* |
-| `GITHUB_TOKEN` | Alternative token variable name | - |
-| `GITHUB_API_URL` | Base API URL | `https://api.github.com` |
-| `GITHUB_READ_ONLY` | Enable 3-tier read-only mode (`true`, `1`, `yes`) | `false` |
+### Option 1: Run with `npx` (No installation needed)
+
+```bash
+npx -y @sumirati/mcp-github
+```
+
+### Option 2: Install Globally
+
+```bash
+npm install -g @sumirati/mcp-github
+mcp-github
+```
+
+### Option 3: Local Clone
+
+```bash
+git clone http://192.168.99.9/buggycode/mcp-github.git
+# Or from GitHub:
+# git clone https://github.com/sumirati/mcp-github.git
+
+cd mcp-github
+npm install
+node index.js
+```
 
 ---
 
-## MCP Client Configuration Example
+## Configuration & Environment Variables
 
-In `antigravity.json` or your MCP client configuration:
+Configure the following environment variables (or copy `.env.example` to `.env`):
 
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | **Yes** | — | GitHub Personal Access Token (classic or fine-grained) |
+| `GITHUB_TOKEN` | No | — | Alternative token variable name |
+| `GITHUB_API_URL` | No | `https://api.github.com` | Base API URL (or GitHub Enterprise Server) |
+| `GITHUB_READ_ONLY` | No | `false` | Enable 3-tier read-only mode (`true`, `1`, `yes`) |
+
+---
+
+## Client Configuration
+
+### Google Antigravity / Claude Desktop / Cursor
+
+Add to your MCP configuration file (`mcp_config.json`, `antigravity.json`, or `claude_desktop_config.json`):
+
+#### Using npm / npx (Recommended):
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@sumirati/mcp-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here",
+        "GITHUB_READ_ONLY": "false"
+      }
+    }
+  }
+}
+```
+
+#### Using local repository:
 ```json
 {
   "mcpServers": {
