@@ -189,3 +189,30 @@ export async function executeAction(actionName, params = {}) {
   const projected = projectOutput(rawResult);
   return projected !== undefined ? projected : rawResult;
 }
+
+/**
+ * Returns all tools across all domains (for full dump / legacy mode)
+ */
+export function getAllTools() {
+  const available = isReadOnly()
+    ? Array.from(ACTION_CATALOG.values()).filter((t) => !t.mutating)
+    : Array.from(ACTION_CATALOG.values());
+
+  return available.map((entry) => ({
+    name: entry.name,
+    title:
+      entry.name
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" "),
+    description: entry.description,
+    inputSchema: entry.inputSchema,
+    annotations: {
+      readOnlyHint: !entry.mutating,
+      destructiveHint: entry.name.startsWith("delete_") || entry.name.startsWith("remove_"),
+      idempotentHint: !entry.mutating,
+      openWorldHint: false,
+    },
+    mutating: entry.mutating,
+  }));
+}

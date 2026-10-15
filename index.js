@@ -13,6 +13,7 @@ import {
   ACTION_CATALOG,
   findActions,
   executeAction,
+  getAllTools,
 } from "./src/catalog.js";
 import {
   GetFileContentsSchema,
@@ -62,9 +63,15 @@ export const GithubExecuteActionSchema = z.object({
     ),
   params: z
     .record(z.any())
-    .default({})
+    .optional()
     .describe(
       "Parameters dictionary for the action matching its parameter schema"
+    ),
+  parameters: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Alias for params (for cross-client compatibility)"
     ),
 });
 
@@ -140,7 +147,7 @@ const EAGER_TOOLS = [
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "2.0.0",
+    version: "2.0.1",
   },
   {
     capabilities: {
@@ -149,7 +156,19 @@ const server = new Server(
   }
 );
 
+function shouldExposeAllTools() {
+  return (
+    process.env.GITHUB_EXPOSE_ALL_TOOLS === "true" ||
+    process.env.GITHUB_EXPOSE_LEGACY_TOOLS === "true"
+  );
+}
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  if (shouldExposeAllTools()) {
+    return {
+      tools: getAllTools(),
+    };
+  }
   return {
     tools: EAGER_TOOLS,
   };
@@ -165,7 +184,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = findActions(parsed.query, parsed.domain);
     } else if (name === "github_execute_action") {
       const parsed = GithubExecuteActionSchema.parse(args);
-      result = await executeAction(parsed.action, parsed.params || {});
+      const actionParams = parsed.params || parsed.parameters || {};
+      result = await executeAction(parsed.action, actionParams);
     } else if (name === "get_file_contents") {
       result = await repositoryHandlers.get_file_contents(args);
       result = projectOutput(result) || result;
@@ -202,8 +222,9 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   const modeStr = isReadOnly() ? " [READ-ONLY MODE: mutating actions disabled]" : "";
+  const legacyStr = shouldExposeAllTools() ? " [LEGACY MODE: all tools exposed]" : " [HYBRID 5-TOOL MODE]";
   console.error(
-    `GitHub MCP Server v2.0.0 running on stdio (5-tool architecture, ${ACTION_CATALOG.size} actions in catalog)${modeStr}`
+    `GitHub MCP Server v2.0.1 running on stdio (${ACTION_CATALOG.size} actions in catalog)${modeStr}${legacyStr}`
   );
 }
 
