@@ -128,7 +128,7 @@ In `antigravity.json` or your MCP client configuration:
   "mcpServers": {
     "github": {
       "command": "node",
-      "args": ["/Users/sumirati/src/antigravity/MCP-github/index.js"],
+      "args": ["/path/to/MCP-github/index.js"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here",
         "GITHUB_READ_ONLY": "false"
