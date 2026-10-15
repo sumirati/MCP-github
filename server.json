@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sumirati/mcp-github",
   "title": "GitHub MCP Server",
-  "description": "Developer-ready GitHub MCP server with 5-Tool Hybrid Architecture (2026 AI-Native Standard), dynamic action discovery, and 3-tier read-only mode.",
+  "description": "Developer-ready GitHub MCP server with 5-tool hybrid architecture and dynamic discovery.",
   "repository": {
     "url": "https://github.com/sumirati/mcp-github",
     "source": "github"
   },
-  "version": "2.0.0",
+  "version": "2.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@sumirati/mcp-github",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "transport": {
         "type": "stdio"
       },
