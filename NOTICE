@@ -1,6 +1,27 @@
-@sumirati/mcp-github
+GitHub MCP Server (@sumirati/mcp-github)
 Copyright (c) 2026 sumirati@buggycode.net
 
-This product includes software developed as a Model Context Protocol (MCP) server
-for the GitHub REST API.
-Architecturally adapted from @sumirati/mcp-gitlab.
+This product includes software and schemas developed by third parties:
+
+1. @modelcontextprotocol/sdk
+   Copyright (c) 2024-2025 Anthropic, PBC
+   Licensed under the MIT License
+   https://github.com/modelcontextprotocol/typescript-sdk
+
+2. zod
+   Copyright (c) 2020-present Colin McDonnell
+   Licensed under the MIT License
+   https://github.com/colinhacks/zod
+
+3. zod-to-json-schema
+   Copyright (c) Stefan Evertsson
+   Licensed under the MIT License
+   https://github.com/StefanTerdell/zod-to-json-schema
+
+4. GitHub REST API Specifications
+   GitHub REST API v3 / OpenAPI contracts and endpoint conventions - GitHub, Inc.
+   https://docs.github.com/en/rest
+
+Community architectural patterns and workflows evaluated:
+- jmrplens/gitlab-mcp-server (https://github.com/jmrplens/gitlab-mcp-server) — Dynamic action discovery and meta-dispatcher pattern concepts (2-step find_actions / execute_action architecture)
+- @sumirati/mcp-gitlab (https://gitlab.com/sumirati/mcp-gitlab) — Sibling project architecture, 3-tier read-only mode, and token projection standards
