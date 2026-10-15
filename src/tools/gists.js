@@ -4,70 +4,70 @@ import { githubRequest } from "../client.js";
 import { summarizeGist } from "../helpers.js";
 
 export const ListGistsSchema = z.object({
-  since: z.string().optional().describe("Only gists updated at or after this time (ISO 8601 format)"),
-  page: z.number().optional().default(1),
-  per_page: z.number().optional().default(30),
+  since: z.string().optional().describe("Filter to only gists updated on or after this timestamp (ISO 8601 format, e.g. '2026-01-01T00:00:00Z')"),
+  page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
+  per_page: z.number().optional().default(30).describe("Number of gists per page (default: 30, max: 100)"),
 });
 
 export const GetGistSchema = z.object({
-  gist_id: z.string().describe("Gist ID"),
+  gist_id: z.string().describe("Unique alphanumeric string identifier of the gist"),
 });
 
 export const CreateGistSchema = z.object({
-  description: z.string().optional().describe("Description of the gist"),
-  public: z.boolean().optional().default(false).describe("Whether the gist is public or secret"),
+  description: z.string().optional().describe("Summary description of the gist and its contents"),
+  public: z.boolean().optional().default(false).describe("Whether the gist is publicly discoverable (true) or unlisted/secret (false, default)"),
   files: z
     .record(
       z.object({
-        content: z.string().describe("Content of the file"),
+        content: z.string().describe("Text content of the file"),
       })
     )
-    .describe("Map of filename to content object (e.g. {'snippet.js': {'content': 'console.log(\"hello\")'}}"),
+    .describe("Dictionary mapping filename string to object with 'content' string (e.g. {'snippet.js': {'content': 'console.log(\"hello\")'}}"),
 });
 
 export const UpdateGistSchema = z.object({
-  gist_id: z.string().describe("Gist ID to update"),
-  description: z.string().optional().describe("Updated description"),
+  gist_id: z.string().describe("Unique alphanumeric string identifier of the gist to update"),
+  description: z.string().optional().describe("Updated summary description for the gist"),
   files: z
     .record(
       z.object({
-        content: z.string().optional().describe("New content of the file (or null/empty to delete)"),
+        content: z.string().optional().describe("New text content for the file (or empty/null to delete this file from the gist)"),
         filename: z.string().optional().describe("New name for the file if renaming"),
       })
     )
-    .describe("Map of existing filename to updated content/name"),
+    .describe("Dictionary mapping existing filename to object with updated content or new filename"),
 });
 
 export const DeleteGistSchema = z.object({
-  gist_id: z.string().describe("Gist ID to delete"),
+  gist_id: z.string().describe("Unique alphanumeric string identifier of the gist to delete"),
 });
 
 export const gistTools = [
   {
     name: "list_gists",
-    description: "List code snippets and gists for the authenticated user",
+    description: "List code snippets and gists owned by the authenticated user with file summaries. Use to locate code snippet IDs before reading or editing.",
     inputSchema: zodToJsonSchema(ListGistsSchema),
   },
   {
     name: "get_gist",
-    description: "Get full contents and metadata of a specific code snippet/gist",
+    description: "Get full source code contents, files, and description of a specific GitHub gist by ID. Use to inspect standalone code snippets or configuration templates.",
     inputSchema: zodToJsonSchema(GetGistSchema),
   },
   {
     name: "create_gist",
-    description: "Create a new code snippet or gist with one or more files",
+    description: "Create a new public or secret GitHub gist with one or more files. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateGistSchema),
     mutating: true,
   },
   {
     name: "update_gist",
-    description: "Update an existing code snippet or gist",
+    description: "Update an existing gist's description or modify/rename/delete individual files within the gist. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(UpdateGistSchema),
     mutating: true,
   },
   {
     name: "delete_gist",
-    description: "Delete a code snippet or gist",
+    description: "Permanently delete a gist by its identifier. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(DeleteGistSchema),
     mutating: true,
   },
