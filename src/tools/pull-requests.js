@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema, RepoParamsSchema, normalizeRepoParams } from "../schemas.js";
 import { githubRequest } from "../client.js";
-import { summarizePullRequest, sliceDiff } from "../helpers.js";
+import { summarizePullRequest, sliceDiff, summarizePullRequestReview } from "../helpers.js";
 
 export const ListPullRequestsSchema = RepoParamsSchema.extend({
   state: z.enum(["open", "closed", "all"]).optional().default("open").describe("State of pull requests (default: open)"),
@@ -65,6 +65,28 @@ export const CreatePullRequestReplySchema = RepoParamsSchema.extend({
   body: z.string().describe("Reply text"),
 });
 
+export const ListPullRequestReviewsSchema = RepoParamsSchema.extend({
+  pull_number: z.number().describe("Pull request number"),
+  page: z.number().optional().default(1),
+  per_page: z.number().optional().default(30),
+});
+
+export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
+  pull_number: z.number().describe("Pull request number"),
+  event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]).describe("Review event action"),
+  body: z.string().optional().describe("Summary review comment markdown"),
+  comments: z
+    .array(
+      z.object({
+        path: z.string().describe("Relative file path being reviewed"),
+        position: z.number().optional().describe("Line index in diff"),
+        body: z.string().describe("Review comment text"),
+      })
+    )
+    .optional()
+    .describe("Optional inline draft comments to submit with the review"),
+});
+
 export const pullRequestTools = [
   {
     name: "list_pull_requests",
@@ -114,6 +136,17 @@ export const pullRequestTools = [
     name: "create_pull_request_reply",
     description: "Reply to an existing pull request review comment thread",
     inputSchema: zodToJsonSchema(CreatePullRequestReplySchema),
+    mutating: true,
+  },
+  {
+    name: "list_pull_request_reviews",
+    description: "List formal code reviews (approvals, change requests) on a pull request",
+    inputSchema: zodToJsonSchema(ListPullRequestReviewsSchema),
+  },
+  {
+    name: "create_pull_request_review",
+    description: "Submit a formal code review (APPROVE, REQUEST_CHANGES, or COMMENT)",
+    inputSchema: zodToJsonSchema(CreatePullRequestReviewSchema),
     mutating: true,
   },
 ];
@@ -255,5 +288,32 @@ export const pullRequestHandlers = {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+
+  list_pull_request_reviews: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = ListPullRequestReviewsSchema.parse(args);
+    const q = new URLSearchParams({
+      page: parsed.page.toString(),
+      per_page: parsed.per_page.toString(),
+    });
+    const res = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/reviews?${q.toString()}`);
+    const items = Array.isArray(res) ? res : res.items || [];
+    return items.map(summarizePullRequestReview);
+  },
+
+  create_pull_request_review: async (args) => {
+    const { owner, repo } = normalizeRepoParams(args);
+    const parsed = CreatePullRequestReviewSchema.parse(args);
+    const body = {
+      event: parsed.event,
+      ...(parsed.body ? { body: parsed.body } : {}),
+      ...(parsed.comments ? { comments: parsed.comments } : {}),
+    };
+    const res = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return summarizePullRequestReview(res);
   },
 };
