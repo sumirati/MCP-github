@@ -8,7 +8,7 @@ export const ListMilestonesSchema = RepoParamsSchema.extend({
   sort: z.enum(["due_on", "completeness"]).optional().default("due_on").describe("Sort milestones by: 'due_on' (default) or 'completeness'"),
   direction: z.enum(["asc", "desc"]).optional().default("asc").describe("Sort direction: 'asc' (default) or 'desc'"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of milestones per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of milestones per page (default: 10, max: 100)"),
 });
 
 export const GetMilestoneSchema = RepoParamsSchema.extend({

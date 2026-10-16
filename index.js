@@ -61,6 +61,8 @@ export const GithubFindActionsSchema = z.object({
     .describe("Output format: 'markdown' (default, compact human/LLM-readable text table) or 'json' (structured object with parameter schemas)"),
 });
 
+const DEFAULT_FORMAT = process.env.MCP_OUTPUT_FORMAT === "json" ? "json" : "markdown";
+
 export const GithubExecuteActionSchema = z.object({
   action: z
     .string()
@@ -82,8 +84,8 @@ export const GithubExecuteActionSchema = z.object({
   format: z
     .enum(["json", "markdown"])
     .optional()
-    .default("json")
-    .describe("Output format: 'json' (default) or 'markdown' (compact human/LLM-readable text)"),
+    .default(DEFAULT_FORMAT)
+    .describe("Output format: 'markdown' (default, token-optimized compact table/text for LLM) or 'json' (structured JSON)"),
 });
 
 // The 5-Tool Hybrid Architecture (2026 AI-Native Standard)
@@ -155,7 +157,7 @@ const EAGER_TOOLS = [
   },
 ];
 
-function formatResult(result, format = "json") {
+function formatResult(result, format = DEFAULT_FORMAT) {
   if (result && Array.isArray(result.content)) {
     return result;
   }
@@ -245,18 +247,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "get_repository") {
       const raw = await repositoryHandlers.get_repository(args);
       const result = projectOutput(raw) || raw;
-      return formatResult(result, args?.format);
+      return formatResult(result, args?.format || DEFAULT_FORMAT);
     }
 
     if (name === "get_commit") {
       const raw = await commitHandlers.get_commit(args);
       const result = projectOutput(raw) || raw;
-      return formatResult(result, args?.format);
+      return formatResult(result, args?.format || DEFAULT_FORMAT);
     }
 
     // Direct action invocation fallback for seamless backwards compatibility
-    const result = await executeAction(name, args, { format: args?.format });
-    return formatResult(result, args?.format);
+    const result = await executeAction(name, args, { format: args?.format || DEFAULT_FORMAT });
+    return formatResult(result, args?.format || DEFAULT_FORMAT);
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(

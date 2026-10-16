@@ -34,7 +34,7 @@ export const CreateGroupSchema = z.object({
 
 export const ListUserOrganizationsSchema = z.object({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of organizations per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of organizations per page (default: 10, max: 100)"),
 });
 
 export const ListAccessibleRepositoriesSchema = z.object({
@@ -43,7 +43,7 @@ export const ListAccessibleRepositoriesSchema = z.object({
   sort: z.enum(["created", "updated", "pushed", "full_name"]).optional().default("updated").describe("Sort repositories by: 'created', 'updated' (default), 'pushed', or 'full_name'"),
   direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of repositories per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of repositories per page (default: 10, max: 100)"),
 });
 
 export const userTools = [

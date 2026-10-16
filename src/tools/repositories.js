@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema, RepoParamsSchema, normalizeRepoParams } from "../schemas.js";
 import { githubRequest } from "../client.js";
-import { summarizeRepository, summarizeBranch } from "../helpers.js";
+import { summarizeRepository, summarizeBranch, extractSymbolOutline } from "../helpers.js";
 
 // Schemas
 export const SearchRepositoriesSchema = z.object({
@@ -9,10 +9,12 @@ export const SearchRepositoriesSchema = z.object({
   sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Field to sort results by: 'stars', 'forks', 'help-wanted-issues', or 'updated'"),
   order: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(20).describe("Number of results per page (default: 20, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of results per page (default: 10, max: 100)"),
 });
 
-export const GetRepositorySchema = RepoParamsSchema.extend({});
+export const GetRepositorySchema = RepoParamsSchema.extend({
+  format: z.enum(["json", "markdown"]).optional().default("markdown").describe("Output format: 'markdown' (default) or 'json'"),
+});
 
 export const CreateRepositorySchema = z.object({
   name: z.string().describe("Repository name (alphanumeric with hyphens/dots, e.g. 'my-api-server')"),
@@ -25,6 +27,9 @@ export const CreateRepositorySchema = z.object({
 export const GetFileContentsSchema = RepoParamsSchema.extend({
   path: z.string().describe("Relative path to file or directory in repository (e.g. 'README.md', 'src/index.js', or '' for root)"),
   ref: z.string().optional().describe("Git reference (branch name, tag, or commit SHA) to read from (default: default branch / HEAD)"),
+  outline_only: z.boolean().optional().default(false).describe("Extract top-level symbol signatures (functions, classes, interfaces, types) with line numbers to conserve tokens (default: false)"),
+  start_line: z.number().optional().describe("Optional 1-based start line to slice file contents"),
+  end_line: z.number().optional().describe("Optional 1-based end line to slice file contents"),
 });
 
 export const CreateOrUpdateFileSchema = RepoParamsSchema.extend({
@@ -45,7 +50,7 @@ export const DeleteFileSchema = RepoParamsSchema.extend({
 export const ListBranchesSchema = RepoParamsSchema.extend({
   protected: z.boolean().optional().describe("Filter branches by protected status (true/false) directly pushed upstream"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of results per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of results per page (default: 10, max: 100)"),
 });
 
 export const CreateBranchSchema = RepoParamsSchema.extend({
@@ -90,7 +95,7 @@ export const repositoryTools = [
   },
   {
     name: "get_file_contents",
-    description: "Read current file contents or list directory entries at a specified git ref. Automatically decodes Base64 file contents into plain text UTF-8 in 'decoded_content'. Use when inspecting source code or project structure. For viewing historical commit diffs, use get_commit instead.",
+    description: "Read current file contents, extract symbol outlines ('outline_only: true'), slice line ranges, or list directory entries at a specified git ref. Automatically decodes Base64 into UTF-8. Use 'outline_only: true' first to inspect structure in ~50-100 tokens, then request specific line ranges.",
     inputSchema: zodToJsonSchema(GetFileContentsSchema),
   },
   {
@@ -197,16 +202,31 @@ export const repositoryHandlers = {
       }));
     }
 
-    if (res.content && res.encoding === "base64") {
-      res.decoded_content = Buffer.from(res.content, "base64").toString("utf-8");
-    }
-    return {
+    const result = {
       name: res.name,
       path: res.path,
       sha: res.sha,
       size: res.size,
-      decoded_content: res.decoded_content || null,
     };
+
+    if (res.content && res.encoding === "base64") {
+      const decoded = Buffer.from(res.content, "base64").toString("utf-8");
+      if (parsed.outline_only) {
+        result.outline = extractSymbolOutline(decoded, cleanPath);
+      } else if (parsed.start_line || parsed.end_line) {
+        const lines = decoded.split(/\r?\n/);
+        const start = Math.max(1, parsed.start_line || 1);
+        const end = Math.min(lines.length, parsed.end_line || lines.length);
+        result.decoded_content = lines.slice(start - 1, end).join("\n");
+        result.sliced_lines = `${start}-${end} of ${lines.length}`;
+      } else {
+        result.decoded_content = decoded;
+      }
+    } else {
+      result.decoded_content = null;
+    }
+
+    return result;
   },
 
   create_or_update_file: async (args) => {

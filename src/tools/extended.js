@@ -11,7 +11,7 @@ export const SetRepositoryTopicsSchema = RepoParamsSchema.extend({
 
 export const ListRepositoryWebhooksSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of webhooks per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of webhooks per page (default: 10, max: 100)"),
 });
 
 export const GetRepositoryWebhookSchema = RepoParamsSchema.extend({
@@ -34,7 +34,7 @@ export const ListDependabotAlertsSchema = RepoParamsSchema.extend({
   state: z.enum(["auto_dismissed", "dismissed", "fixed", "open"]).optional().describe("Filter by alert state: 'auto_dismissed', 'dismissed', 'fixed', or 'open'"),
   severity: z.enum(["low", "medium", "high", "critical"]).optional().describe("Filter by security severity: 'low', 'medium', 'high', or 'critical'"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of alerts per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of alerts per page (default: 10, max: 100)"),
 });
 
 // Tool Definitions

@@ -7,7 +7,7 @@ export const ListCollaboratorsSchema = RepoParamsSchema.extend({
   affiliation: z.enum(["outside", "direct", "all"]).optional().default("all").describe("Filter collaborators by affiliation: 'outside' (outside collaborators), 'direct' (direct permissions), or 'all' (default)"),
   permission: z.enum(["pull", "triage", "push", "maintain", "admin"]).optional().describe("Filter collaborators by permission level: 'pull', 'triage', 'push', 'maintain', or 'admin'"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of collaborators per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of collaborators per page (default: 10, max: 100)"),
 });
 
 export const GetCollaboratorPermissionSchema = RepoParamsSchema.extend({

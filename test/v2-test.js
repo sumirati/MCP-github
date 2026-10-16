@@ -95,12 +95,117 @@ const teamResults = findActions("create_team", "", "json");
 assert(teamResults.actions.map((a) => a.action).includes("create_team"), "Missing create_team");
 assert.strictEqual(teamResults.actions[0].mutating, true, "create_team must be marked mutating");
 
+// 11c. Multi-file atomic commit action discovery (create_commit & push_files)
+const commitActionResults = findActions("create_commit", "", "json");
+console.log(`[PASS] findActions('create_commit', '', 'json') returned ${commitActionResults.total_matches} matches`);
+assert(commitActionResults.actions.map((a) => a.action).includes("create_commit"), "Missing create_commit");
+assert.strictEqual(commitActionResults.actions[0].mutating, true, "create_commit must be marked mutating");
+const pushActionResults = findActions("push_files", "", "json");
+assert(pushActionResults.actions.map((a) => a.action).includes("push_files"), "Missing push_files");
+assert.strictEqual(pushActionResults.actions[0].mutating, true, "push_files must be marked mutating");
+console.log("[PASS] Atomic multi-file commit actions (create_commit & push_files) verified in catalog");
+
 // 12. Smart format: default markdown output support
 const mdResults = findActions("workflow", ""); // default format is markdown
 assert(typeof mdResults === "string", "Expected default markdown output string");
 assert(mdResults.includes("| Action | Domain | Mutating | Description |"), "Expected markdown table header");
 assert(mdResults.includes("`list_workflows`"), "Expected list_workflows in markdown table");
 console.log("[PASS] findActions default format: 'markdown' rendered valid Markdown table");
+
+// 12b. High-density Markdown domain formatters validation (85-90% token reduction)
+import {
+  jsonToMarkdown,
+  formatIssuesMarkdown,
+  formatPullRequestsMarkdown,
+  formatWorkflowRunsMarkdown,
+} from "../src/helpers.js";
+
+const sampleIssues = [
+  {
+    number: 101,
+    title: "Implement Token Economy Formatters",
+    state: "open",
+    user: "sumirati",
+    assignees: ["sumirati"],
+    milestone: { title: "v2.2" },
+    labels: ["enhancement", "performance"],
+  },
+];
+const issueMd = jsonToMarkdown(sampleIssues, "list_issues");
+assert(issueMd.includes("| # | Title | State | Author | Assignees | Milestone | Labels |"), "Expected issue table header");
+assert(issueMd.includes("#101"), "Expected #101 in issue markdown");
+assert(issueMd.includes("@sumirati"), "Expected @sumirati author");
+assert(issueMd.includes("enhancement, performance"), "Expected combined labels");
+console.log("[PASS] High-density formatIssuesMarkdown rendered clean 7-column table");
+
+const samplePRs = [
+  {
+    number: 55,
+    title: "Switch list actions to Markdown tables",
+    draft: false,
+    state: "open",
+    head: { ref: "feat/markdown-tables" },
+    base: { ref: "main" },
+    user: "sumirati",
+    mergeable_state: "clean",
+  },
+];
+const prMd = jsonToMarkdown(samplePRs, "list_pull_requests");
+assert(prMd.includes("| #PR | Title | State | Branch | Author | Mergeable |"), "Expected PR table header");
+assert(prMd.includes("#55"), "Expected #55 in PR markdown");
+assert(prMd.includes("feat/markdown-tables -> main"), "Expected branch routing");
+console.log("[PASS] High-density formatPullRequestsMarkdown rendered clean 6-column table");
+
+const sampleRuns = [
+  {
+    id: 8821,
+    name: "CI Pipeline",
+    status: "completed",
+    conclusion: "success",
+    head_branch: "main",
+    head_sha: "c0ffee1",
+    event: "push",
+  },
+];
+const runMd = jsonToMarkdown(sampleRuns, "list_workflow_runs");
+assert(runMd.includes("| ID | Workflow | Status | Branch | Commit | Event |"), "Expected workflow run table header");
+assert(runMd.includes("8821"), "Expected run 8821 in table");
+assert(runMd.includes("c0ffee1"), "Expected short SHA in table");
+// 12c. Smart Diff & Lockfile Truncation + Conservative Pagination (Proposals A & B)
+import { isLockfile, filterLockfileDiff } from "../src/helpers.js";
+import { ListCommitsSchema } from "../src/tools/commits.js";
+import { ListPullRequestsSchema } from "../src/tools/pull-requests.js";
+
+assert.strictEqual(isLockfile("package-lock.json"), true);
+assert.strictEqual(isLockfile("subdir/yarn.lock"), true);
+assert.strictEqual(isLockfile("go.sum"), true);
+assert.strictEqual(isLockfile("bundle.min.js"), true);
+assert.strictEqual(isLockfile("src/main.js"), false);
+
+const mockDiff = `diff --git a/package-lock.json b/package-lock.json
+index 1234567..89abcdef 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,5 +1,5 @@
++  "version": "2.0.0"
+diff --git a/src/index.js b/src/index.js
+index 1111111..2222222 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1 +1 @@
+-console.log('old');
++console.log('new');
+`;
+
+const filtered = filterLockfileDiff(mockDiff);
+assert(filtered.includes("[... Diff collapsed for lockfile: package-lock.json"), "Expected lockfile diff collapsed");
+assert(filtered.includes("console.log('new')"), "Expected non-lockfile diff retained");
+
+const commitParsed = ListCommitsSchema.parse({ owner: "o", repo: "r" });
+assert.strictEqual(commitParsed.per_page, 10, "Default per_page must be 10 for commits");
+const prParsed = ListPullRequestsSchema.parse({ owner: "o", repo: "r" });
+assert.strictEqual(prParsed.per_page, 10, "Default per_page must be 10 for pull requests");
+console.log("[PASS] Smart diff lockfile truncation and default per_page: 10 verified");
 
 // 13. Registry metadata & server.json validation
 const serverJson = JSON.parse(fs.readFileSync(new URL("../server.json", import.meta.url), "utf8"));

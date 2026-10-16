@@ -14,7 +14,7 @@ export const ListIssuesSchema = RepoParamsSchema.extend({
   sort: z.enum(["created", "updated", "comments"]).optional().default("created").describe("Sort issues by: 'created', 'updated', or 'comments' (default: 'created')"),
   direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of issues per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of issues per page (default: 10, max: 100)"),
 });
 
 export const GetIssueSchema = RepoParamsSchema.extend({
@@ -43,7 +43,7 @@ export const UpdateIssueSchema = RepoParamsSchema.extend({
 export const ListIssueCommentsSchema = RepoParamsSchema.extend({
   issue_number: z.number().describe("Issue number to retrieve comments for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of comments per page (default: 10, max: 100)"),
 });
 
 export const CreateIssueCommentSchema = RepoParamsSchema.extend({
@@ -53,7 +53,7 @@ export const CreateIssueCommentSchema = RepoParamsSchema.extend({
 
 export const ListLabelsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(50).describe("Number of labels per page (default: 50, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of labels per page (default: 10, max: 100)"),
 });
 
 export const CreateLabelSchema = RepoParamsSchema.extend({

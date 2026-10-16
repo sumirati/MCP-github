@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema, RepoParamsSchema, normalizeRepoParams } from "../schemas.js";
 import { githubRequest } from "../client.js";
-import { summarizePullRequest, sliceDiff, summarizePullRequestReview } from "../helpers.js";
+import { summarizePullRequest, sliceDiff, summarizePullRequestReview, filterLockfileDiff } from "../helpers.js";
 
 export const ListPullRequestsSchema = RepoParamsSchema.extend({
   state: z.enum(["open", "closed", "all"]).optional().default("open").describe("Filter by PR state: 'open' (default), 'closed', or 'all'"),
@@ -10,7 +10,7 @@ export const ListPullRequestsSchema = RepoParamsSchema.extend({
   sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().default("created").describe("Sort PRs by: 'created', 'updated', 'popularity', or 'long-running' (default: 'created')"),
   direction: z.enum(["asc", "desc"]).optional().default("desc").describe("Sort direction: 'asc' or 'desc' (default: 'desc')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of pull requests per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of pull requests per page (default: 10, max: 100)"),
 });
 
 export const GetPullRequestSchema = RepoParamsSchema.extend({
@@ -20,6 +20,7 @@ export const GetPullRequestSchema = RepoParamsSchema.extend({
 export const GetPullRequestDiffSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("The pull request number to fetch unified diff for (e.g. 42)"),
   max_lines: z.number().optional().default(400).describe("Maximum diff lines to return to preserve token context (default: 400)"),
+  ignore_lockfiles: z.boolean().optional().default(true).describe("If true, automatically collapses diffs for lockfiles and minified assets (default: true)"),
 });
 
 export const CreatePullRequestSchema = RepoParamsSchema.extend({
@@ -48,7 +49,7 @@ export const MergePullRequestSchema = RepoParamsSchema.extend({
 export const ListPullRequestCommentsSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number to list inline comments for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of comments per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of comments per page (default: 10, max: 100)"),
 });
 
 export const CreatePullRequestCommentSchema = RepoParamsSchema.extend({
@@ -68,7 +69,7 @@ export const CreatePullRequestReplySchema = RepoParamsSchema.extend({
 export const ListPullRequestReviewsSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number to list reviews for"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of reviews per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of reviews per page (default: 10, max: 100)"),
 });
 
 export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
@@ -189,9 +190,10 @@ export const pullRequestHandlers = {
       },
       "text"
     );
+    const processedDiff = parsed.ignore_lockfiles !== false ? filterLockfileDiff(diffRaw) : diffRaw;
     return {
       pull_number: parsed.pull_number,
-      diff: sliceDiff(diffRaw, parsed.max_lines),
+      diff: sliceDiff(processedDiff, parsed.max_lines),
     };
   },
 

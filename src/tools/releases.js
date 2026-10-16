@@ -5,7 +5,7 @@ import { summarizeRelease } from "../helpers.js";
 
 export const ListReleasesSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(20).describe("Number of releases per page (default: 20, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of releases per page (default: 10, max: 100)"),
 });
 
 export const GetReleaseSchema = RepoParamsSchema.extend({
@@ -24,7 +24,7 @@ export const CreateReleaseSchema = RepoParamsSchema.extend({
 
 export const ListTagsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of tags per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of tags per page (default: 10, max: 100)"),
 });
 
 export const CreateTagSchema = RepoParamsSchema.extend({

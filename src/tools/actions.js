@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { zodToJsonSchema, RepoParamsSchema, normalizeRepoParams } from "../schemas.js";
 import { githubRequest } from "../client.js";
-import { summarizeWorkflow, summarizeWorkflowRun, summarizeWorkflowJob, summarizeArtifact, tailLog } from "../helpers.js";
+import { summarizeWorkflow, summarizeWorkflowRun, summarizeWorkflowJob, summarizeArtifact, tailLog, extractSmartJobLog } from "../helpers.js";
 
 export const ListWorkflowsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of workflows per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of workflows per page (default: 10, max: 100)"),
 });
 
 export const ListWorkflowRunsSchema = RepoParamsSchema.extend({
@@ -19,7 +19,7 @@ export const ListWorkflowRunsSchema = RepoParamsSchema.extend({
   actor: z.string().optional().describe("Filter workflow runs triggered by a specific GitHub username"),
   created: z.string().optional().describe("Filter workflow runs created with date query (e.g. '>2026-10-01' or '2026-10-01..2026-10-15')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(20).describe("Number of workflow runs per page (default: 20, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of workflow runs per page (default: 10, max: 100)"),
 });
 
 export const GetWorkflowRunSchema = RepoParamsSchema.extend({
@@ -30,12 +30,14 @@ export const ListWorkflowRunJobsSchema = RepoParamsSchema.extend({
   run_id: z.number().describe("Unique numeric identifier of the workflow run"),
   filter: z.enum(["latest", "all"]).optional().default("latest").describe("Filter jobs: 'latest' (latest execution attempt) or 'all' (all attempts)"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of jobs per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of jobs per page (default: 10, max: 100)"),
 });
 
 export const GetJobLogsSchema = RepoParamsSchema.extend({
   job_id: z.number().describe("Unique numeric identifier of the job"),
   tail_lines: z.number().optional().default(200).describe("Number of trailing log lines to return to preserve LLM token context (default: 200)"),
+  strip_ansi: z.boolean().optional().default(true).describe("Strip ANSI color/escape sequences from build logs to eliminate token overhead (default: true)"),
+  smart_failure: z.boolean().optional().default(true).describe("Scan for failure anchor (error, panic, FAIL) and return failure block plus teardown tail (default: true)"),
 });
 
 export const TriggerWorkflowSchema = RepoParamsSchema.extend({
@@ -55,7 +57,7 @@ export const RerunWorkflowSchema = RepoParamsSchema.extend({
 export const ListWorkflowRunArtifactsSchema = RepoParamsSchema.extend({
   run_id: z.number().describe("Unique numeric identifier of the workflow run"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().min(1).max(100).optional().default(30).describe("Number of artifacts per page (default: 30, max: 100)"),
+  per_page: z.number().min(1).max(100).optional().default(10).describe("Number of artifacts per page (default: 10, max: 100)"),
 });
 
 export const GetWorkflowRunArtifactSchema = RepoParamsSchema.extend({
@@ -95,7 +97,7 @@ export const actionTools = [
   },
   {
     name: "get_job_logs",
-    description: "Fetch plain text execution logs for an Actions job with tail extraction (defaults to last 200 lines). Behavioral safety: automatically trims massive log files to preserve LLM token context while capturing failure stack traces.",
+    description: "Fetch plain text execution logs for an Actions job with smart failure extraction and ANSI stripping. Behavioral safety: scans for errors/panics to extract failure blocks and trims massive logs to preserve LLM token context.",
     inputSchema: zodToJsonSchema(GetJobLogsSchema),
   },
   {
@@ -191,7 +193,11 @@ export const actionHandlers = {
     );
     return {
       job_id: parsed.job_id,
-      logs: tailLog(rawLogs, parsed.tail_lines),
+      logs: extractSmartJobLog(rawLogs, {
+        tail_lines: parsed.tail_lines,
+        strip_ansi: parsed.strip_ansi,
+        smart_failure: parsed.smart_failure,
+      }),
     };
   },
 

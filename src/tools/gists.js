@@ -6,7 +6,7 @@ import { summarizeGist } from "../helpers.js";
 export const ListGistsSchema = z.object({
   since: z.string().optional().describe("Filter to only gists updated on or after this timestamp (ISO 8601 format, e.g. '2026-01-01T00:00:00Z')"),
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of gists per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of gists per page (default: 10, max: 100)"),
 });
 
 export const GetGistSchema = z.object({

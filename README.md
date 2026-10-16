@@ -16,7 +16,7 @@ Architecturally aligned with `@sumirati/mcp-gitlab`, `@sumirati/mcp-github` solv
 - **Glama TDQS Coherence Tier A (5/5)**: By exposing exactly 5 tools to the client, the server sits in the ideal 3–15 tool coherence sweet spot.
 - **Ultra-Lean System Prompt Tax**: Drops schema overhead from ~14.7k tokens down to **~450 tokens** (97% reduction), preserving context windows and maximizing LLM prompt-cache hits.
 - **Zero-Hop Hourly Drivers**: The 3 operations developers and agents use constantly (`get_file_contents`, `get_repository`, `get_commit`) remain eager tools for instant zero-hop execution.
-- **100% Platform Access on Demand**: The entire platform surface of **79 actions across 13 domains** is accessible on-demand via dynamic action discovery (`github_find_actions` $\rightarrow$ `github_execute_action`), supporting both JSON and Markdown output (`format: "json" | "markdown"`).
+- **100% Platform Access on Demand**: The entire platform surface of **84 actions across 13 domains** is accessible on-demand via dynamic action discovery (`github_find_actions` $\rightarrow$ `github_execute_action`), delivering **85%–90% token savings** with default high-density Markdown tables and summaries (`format: "markdown" | "json"`).
 - **Resilient Fallback**: If an agent directly invokes any catalog action name (e.g. `list_pull_requests`), the server dynamically executes it with full input validation and projection.
 
 ```text
@@ -28,7 +28,7 @@ LLM Prompt Context (~450 tokens total):
 └── 5. get_commit(owner, repo, ref)                       [Eager Daily Driver #3]
 
 Under the hood (Dynamic Registry):
-└── 79 Curated Actions across 13 Domains (with 70%+ token reduction projections)
+└── 84 Curated Actions across 13 Domains (with 85%–98% token reduction projections)
 ```
 
 ---
@@ -128,9 +128,9 @@ Add to your MCP configuration file (`mcp_config.json` or `claude_desktop_config.
 
 ---
 
-## Complete Action Catalog Reference (75 Actions)
+## Complete Action Catalog Reference (84 Actions)
 
-All 75 actions feature strict input validation and 2-tier field-mask projections:
+All 84 actions feature strict input validation and 2-tier field-mask projections:
 
 ### 1. The 5 Client-Exposed Tools (Hybrid Mode)
 | Tool | Type | Description |
@@ -155,12 +155,14 @@ All 75 actions feature strict input validation and 2-tier field-mask projections
 | `delete_file` | Delete a file from a repository with a commit | **Yes** |
 | `push_files` | Atomically commit multiple file additions, edits, or deletions | **Yes** |
 
-### 3. Commits & Statuses (4 actions)
+### 3. Commits & Statuses (5 actions)
 | Action | Description | Mutating? |
 | :--- | :--- | :---: |
 | `list_commits` | List chronological commit history filtered by branch, date, or author | No |
 | `get_commit_status` | Get combined CI status checks and commit statuses for a ref | No |
 | `create_commit_status` | Post a status check result to a specific commit SHA | **Yes** |
+| `create_commit` | Create an atomic Git commit with multiple changed or new files via Git Trees API | **Yes** |
+| `push_files` | Alias for `create_commit`: atomically commit multiple files in a single Git commit | **Yes** |
 
 ### 4. Pull Requests & Reviews (11 actions)
 | Action | Description | Mutating? |
@@ -248,8 +250,11 @@ All 75 actions feature strict input validation and 2-tier field-mask projections
 
 Raw GitHub REST API responses are notoriously heavy (often 30KB–100KB per Issue or PR). `@sumirati/mcp-github` enforces strict token economy:
 
-- **System Prompt Tax Reduction (>93% savings)**: Shrinks MCP tool definition footprint from ~14.7k tokens down to **~450 tokens**.
+- **System Prompt Tax Reduction (>97% savings)**: Shrinks MCP tool definition footprint from ~14.7k tokens down to **~450 tokens**.
 - **Recursive Output Projection Filter (`projectOutput`)**: Automatically strips redundant metadata fields (`_links`, `avatar_url`, `gravatar_id`, `node_id`, `site_admin`, user navigation URLs, internal API links, and null/empty fields) before payloads reach the LLM, guaranteeing **70%+ output token savings**.
+- **Smart Diff & Lockfile Truncation**: Commit and PR diffs automatically collapse dependency lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `go.sum`, `Cargo.lock`, `*.min.js`) via `ignore_lockfiles: true` by default, saving 1,000–3,000 tokens per review. Pass `ignore_lockfiles: false` to inspect full lockfile diffs.
+- **Conservative Default Pagination**: All list actions default to `per_page: 10` (max: 100), eliminating token waste from loading 30+ items when only recent entries are needed.
+- **Default High-Density Markdown Format**: Discovery (`github_find_actions`), execution (`github_execute_action`), repository info (`get_repository`), and commit inspection (`get_commit`) default to `format: "markdown"`, yielding 85–90% token reductions.
 - **Unified Diff Truncation**: PR and commit diffs are capped by line count (`max_diff_lines`, default: 400).
 - **Safe Log Tailing**: CI workflow job logs extract the failure tail (`tail_lines`, default: 200) instead of megabyte log dumps.
 
@@ -262,10 +267,13 @@ Raw GitHub REST API responses are notoriously heavy (often 30KB–100KB per Issu
 - [x] Client error resilience (Secondary rate limit / abuse detection, 403/404 scope diagnostics, 201 ghost write guard)
 - [x] Hardened output projection with recursion depth guard (`maxDepth = 32`) and empty collection preservation
 - [x] Nested subteam & organization management (`create_team`, `get_organization`, `create_group`)
+- [x] Smart CI/CD failure log extraction & ANSI sequence stripping in `get_job_logs` (`strip_ansi`, `smart_failure`)
+- [x] Outline-first code symbol extraction & line range slicing in `get_file_contents` (`outline_only`, `start_line`, `end_line`)
 - [ ] Pre-flight mergeability & conflict verification (`get_mergeability`)
 - [ ] Token scope self-auditing & permission pre-flight
 
 ### Future Horizons (v2.x)
+- [ ] Standardized collection `_summary` headers to facilitate multi-turn history pruning in LiteLLM / Eigent agent orchestration
 - [ ] Remote Transports: Streamable SSE and HTTP remote server modes
 - [ ] Scoped GraphQL query engine for relational deep inspections
 - [ ] DevSecOps code scanning & secret scanning alert queries

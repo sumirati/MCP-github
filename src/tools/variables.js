@@ -5,7 +5,7 @@ import { summarizeActionsVariable } from "../helpers.js";
 
 export const ListActionsVariablesSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of variables per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of variables per page (default: 10, max: 100)"),
 });
 
 export const GetActionsVariableSchema = RepoParamsSchema.extend({
@@ -28,7 +28,7 @@ export const DeleteActionsVariableSchema = RepoParamsSchema.extend({
 
 export const ListActionsSecretsSchema = RepoParamsSchema.extend({
   page: z.number().optional().default(1).describe("Page number for pagination (default: 1)"),
-  per_page: z.number().optional().default(30).describe("Number of secrets per page (default: 30, max: 100)"),
+  per_page: z.number().optional().default(10).describe("Number of secrets per page (default: 10, max: 100)"),
 });
 
 export const variableTools = [

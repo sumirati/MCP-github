@@ -101,7 +101,7 @@ try {
 }
 
 // Test 7: projectOutput hardening (html_url preservation, empty collections, depth guard)
-import { projectOutput } from "../src/helpers.js";
+import { projectOutput, stripAnsi, extractSmartJobLog, extractSymbolOutline } from "../src/helpers.js";
 
 // Verify html_url preservation and noise key removal
 const samplePayload = {
@@ -133,5 +133,44 @@ for (let i = 1; i <= 40; i++) {
 const depthTested = projectOutput(deepObj, 0, 32);
 assert(depthTested !== undefined, "Deep object should not throw call-stack exhaustion");
 console.log("[PASS] projectOutput recursion depth guard (maxDepth = 32) verified");
+
+// Test 8: stripAnsi and extractSmartJobLog
+const rawAnsiLog = "\x1B[31mError:\x1B[0m compilation failed\nLine 2\nLine 3";
+assert.strictEqual(stripAnsi(rawAnsiLog), "Error: compilation failed\nLine 2\nLine 3");
+
+// Test smart failure extraction
+const mockJobLogs = Array.from({ length: 300 }, (_, i) => `Log line ${i + 1}`).join("\n") +
+  "\nFAIL: test_oauth_flow\nAssertionError: Expected 200 got 500\n" +
+  Array.from({ length: 100 }, (_, i) => `Teardown step ${i + 1}`).join("\n");
+
+const smartExtracted = extractSmartJobLog(mockJobLogs, { tail_lines: 50, smart_failure: true });
+assert(smartExtracted.includes("=== DETECTED FAILURE BLOCK"), "Must contain detected failure block");
+assert(smartExtracted.includes("FAIL: test_oauth_flow"), "Must contain the failure anchor");
+assert(smartExtracted.includes("=== JOB TEARDOWN TAIL ==="), "Must contain teardown tail");
+console.log("[PASS] stripAnsi and extractSmartJobLog failure anchor extraction verified");
+
+// Test 9: extractSymbolOutline
+const mockCode = `
+import express from "express";
+
+export class RepositoryService {
+  constructor() {}
+  async findById() {}
+}
+
+export function computeHash(data) {
+  return "abc";
+}
+
+const parseResponse = (res) => {
+  return res.json();
+};
+`;
+const outline = extractSymbolOutline(mockCode, "service.js");
+assert(outline.includes("=== SYMBOL OUTLINE"), "Outline must have header");
+assert(outline.includes("export class RepositoryService"), "Outline must include RepositoryService");
+assert(outline.includes("export function computeHash"), "Outline must include computeHash");
+assert(outline.includes("const parseResponse"), "Outline must include parseResponse");
+console.log("[PASS] extractSymbolOutline AST/regex signature extraction verified");
 
 console.log("ALL GITHUB CLIENT RESILIENCE & PROJECTION TESTS PASSED!\n");

@@ -328,6 +328,50 @@ export function summarizePullRequestReview(r) {
   };
 }
 
+export const LOCKFILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "cargo.lock",
+  "poetry.lock",
+  "gemfile.lock",
+  "composer.lock",
+  "go.sum",
+  "mix.lock",
+  "podfile.lock",
+  "bun.lockb",
+  "flake.lock",
+  "pipfile.lock",
+]);
+
+export function isLockfile(filePath) {
+  if (!filePath) return false;
+  const filename = filePath.split("/").pop().toLowerCase();
+  if (LOCKFILES.has(filename)) return true;
+  if (filename.endsWith(".min.js") || filename.endsWith(".min.css") || filename.endsWith(".map")) return true;
+  return false;
+}
+
+/**
+ * Filter unified git diff text, collapsing sections for recognized lockfiles
+ * unless explicitly requested otherwise.
+ */
+export function filterLockfileDiff(diffText) {
+  if (!diffText || typeof diffText !== "string") return diffText;
+  const chunks = diffText.split(/(?=^diff --git )/m);
+  const result = chunks.map((chunk) => {
+    const match = chunk.match(/^diff --git a\/(.+?) b\/(.+?)(?:\r?\n|$)/m);
+    if (!match) return chunk;
+    const filePath = match[2] || match[1];
+    if (isLockfile(filePath)) {
+      const headerLines = chunk.split(/\r?\n/).slice(0, 4).join("\n");
+      return `${headerLines}\n[... Diff collapsed for lockfile: ${filePath}. Pass ignore_lockfiles: false to view full diff ...]\n`;
+    }
+    return chunk;
+  });
+  return result.join("");
+}
+
 const NOISE_KEYS = new Set([
   "_links",
   "avatar_url",
@@ -396,42 +440,284 @@ export function summarizeArtifact(a) {
 }
 
 /**
- * Converts structured JSON/object responses into clean, compact Markdown
+ * Renders a high-density Markdown table from an array of items and column definitions.
+ * Column def: { header: string, get: (item) => string }
  */
-export function jsonToMarkdown(data) {
+export function renderMarkdownTable(items, columns) {
+  if (!items || items.length === 0) {
+    return "_No items found._";
+  }
+  const headers = columns.map((c) => c.header);
+  const headerLine = `| ${headers.join(" | ")} |`;
+  const dividerLine = `| ${columns.map(() => ":---").join(" | ")} |`;
+  const rows = items.map((item) => {
+    const cells = columns.map((c) => {
+      const val = c.get(item);
+      if (val === null || val === undefined || val === "") return "-";
+      return String(val).replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+    });
+    return `| ${cells.join(" | ")} |`;
+  });
+  return [headerLine, dividerLine, ...rows].join("\n");
+}
+
+export function formatIssuesMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.items || data?.issues || [];
+  return renderMarkdownTable(items, [
+    { header: "#", get: (i) => `#${i.number || i.id}` },
+    { header: "Title", get: (i) => i.title },
+    { header: "State", get: (i) => (i.state_reason ? `${i.state} (${i.state_reason})` : i.state) },
+    { header: "Author", get: (i) => (i.user ? `@${i.user}` : "-") },
+    { header: "Assignees", get: (i) => (Array.isArray(i.assignees) && i.assignees.length ? i.assignees.map((a) => `@${a}`).join(", ") : "-") },
+    { header: "Milestone", get: (i) => (i.milestone ? (i.milestone.title || i.milestone.number) : "-") },
+    { header: "Labels", get: (i) => (Array.isArray(i.labels) && i.labels.length ? i.labels.join(", ") : "-") },
+  ]);
+}
+
+export function formatPullRequestsMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.items || data?.pull_requests || [];
+  return renderMarkdownTable(items, [
+    { header: "#PR", get: (p) => `#${p.number || p.id}` },
+    { header: "Title", get: (p) => (p.draft ? `[Draft] ${p.title}` : p.title) },
+    { header: "State", get: (p) => (p.merged ? "merged" : p.state) },
+    { header: "Branch", get: (p) => `\`${p.head?.ref || p.head || "-"} -> ${p.base?.ref || p.base || "-"}\`` },
+    { header: "Author", get: (p) => (p.user ? `@${p.user}` : "-") },
+    { header: "Mergeable", get: (p) => (p.mergeable_state || (p.mergeable ? "clean" : "-")) },
+  ]);
+}
+
+export function formatWorkflowRunsMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.workflow_runs || [];
+  return renderMarkdownTable(items, [
+    { header: "ID", get: (r) => r.id },
+    { header: "Workflow", get: (r) => r.name },
+    { header: "Status", get: (r) => r.conclusion || r.status },
+    { header: "Branch", get: (r) => `\`${r.head_branch || "-"}\`` },
+    { header: "Commit", get: (r) => (r.head_sha ? r.head_sha.slice(0, 7) : "-") },
+    { header: "Event", get: (r) => r.event || "-" },
+  ]);
+}
+
+export function formatWorkflowsMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.workflows || [];
+  return renderMarkdownTable(items, [
+    { header: "ID", get: (w) => w.id },
+    { header: "Name", get: (w) => w.name },
+    { header: "State", get: (w) => w.state },
+    { header: "Path", get: (w) => `\`${w.path}\`` },
+  ]);
+}
+
+export function formatCommitsMarkdown(data) {
+  const items = Array.isArray(data) ? data : [];
+  return renderMarkdownTable(items, [
+    { header: "SHA", get: (c) => (c.sha ? c.sha.slice(0, 7) : "-") },
+    { header: "Author", get: (c) => (c.author?.name || c.commit?.author?.name || "-") },
+    { header: "Date", get: (c) => ((c.author?.date || c.commit?.author?.date || "").split("T")[0] || "-") },
+    { header: "Message", get: (c) => (c.message || c.commit?.message || "").split("\n")[0] },
+  ]);
+}
+
+export function formatBranchesMarkdown(data) {
+  const items = Array.isArray(data) ? data : [];
+  return renderMarkdownTable(items, [
+    { header: "Branch", get: (b) => b.name },
+    { header: "Protected", get: (b) => (b.protected ? "Yes" : "No") },
+    { header: "Commit", get: (b) => (b.commit?.sha ? b.commit.sha.slice(0, 7) : "-") },
+  ]);
+}
+
+export function formatCollaboratorsMarkdown(data) {
+  const items = Array.isArray(data) ? data : [];
+  return renderMarkdownTable(items, [
+    { header: "User", get: (c) => `@${c.login}` },
+    { header: "Role", get: (c) => c.role_name || "-" },
+    { header: "Permissions", get: (c) => (c.permissions ? Object.entries(c.permissions).filter(([, v]) => v).map(([k]) => k).join(", ") : "-") },
+  ]);
+}
+
+export function formatVariablesMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.variables || [];
+  return renderMarkdownTable(items, [
+    { header: "Name", get: (v) => v.name },
+    { header: "Value", get: (v) => v.value },
+    { header: "Updated", get: (v) => (v.updated_at ? v.updated_at.split("T")[0] : "-") },
+  ]);
+}
+
+export function formatMilestonesMarkdown(data) {
+  const items = Array.isArray(data) ? data : [];
+  return renderMarkdownTable(items, [
+    { header: "#", get: (m) => `#${m.number}` },
+    { header: "Title", get: (m) => m.title },
+    { header: "State", get: (m) => m.state },
+    { header: "Due", get: (m) => (m.due_on ? m.due_on.split("T")[0] : "-") },
+    { header: "Open / Closed", get: (m) => `${m.open_issues || 0} / ${m.closed_issues || 0}` },
+  ]);
+}
+
+export function formatReleasesMarkdown(data) {
+  const items = Array.isArray(data) ? data : [];
+  return renderMarkdownTable(items, [
+    { header: "Tag", get: (r) => r.tag_name },
+    { header: "Name", get: (r) => r.name || "-" },
+    { header: "Status", get: (r) => (r.draft ? "Draft" : r.prerelease ? "Pre-release" : "Published") },
+    { header: "Author", get: (r) => (r.author ? `@${r.author}` : "-") },
+    { header: "Published", get: (r) => (r.published_at ? r.published_at.split("T")[0] : "-") },
+  ]);
+}
+
+export function formatRepositoryMarkdown(r) {
+  if (!r) return "_No repository data._";
+  let md = `## Repository: ${r.full_name || r.name} (ID: ${r.id})\n\n`;
+  if (r.description) md += `${r.description}\n\n`;
+  md += `- **Visibility**: ${r.private ? "private" : "public"}\n`;
+  md += `- **Default Branch**: \`${r.default_branch || "main"}\`\n`;
+  md += `- **HTML URL**: ${r.html_url || "-"}\n`;
+  md += `- **Stars**: ${r.stargazers_count || 0} | **Forks**: ${r.forks_count || 0} | **Open Issues**: ${r.open_issues_count || 0}\n`;
+  if (r.pushed_at) md += `- **Last Pushed**: ${r.pushed_at}\n`;
+  return md;
+}
+
+export function formatCommitDetailsMarkdown(c) {
+  if (!c) return "_No commit data._";
+  let md = `## Commit \`${c.sha?.slice(0, 7) || ""}\`: ${c.headline || c.message?.split("\n")[0] || ""}\n\n`;
+  md += `- **Author**: ${c.author?.name || "-"} (${c.author?.email || "-"}) on ${c.author?.date || "-"}\n`;
+  if (c.committer && c.committer.name !== c.author?.name) {
+    md += `- **Committer**: ${c.committer.name} on ${c.committer.date || "-"}\n`;
+  }
+  if (c.html_url) md += `- **HTML URL**: ${c.html_url}\n`;
+  if (c.message) {
+    md += `\n### Message\n\n${c.message}\n`;
+  }
+  if (Array.isArray(c.files) && c.files.length > 0) {
+    md += `\n### Files Changed (${c.files.length})\n\n`;
+    md += renderMarkdownTable(c.files, [
+      { header: "File", get: (f) => f.filename || f.path },
+      { header: "Status", get: (f) => f.status },
+      { header: "Changes", get: (f) => `+${f.additions || 0}/-${f.deletions || 0}` },
+    ]);
+  }
+  if (c.diff) {
+    md += `\n### Diff\n\n\`\`\`diff\n${c.diff}\n\`\`\`\n`;
+  }
+  return md;
+}
+
+const ACTION_FORMATTERS = {
+  list_issues: formatIssuesMarkdown,
+  search_issues: formatIssuesMarkdown,
+  list_pull_requests: formatPullRequestsMarkdown,
+  search_pull_requests: formatPullRequestsMarkdown,
+  list_workflow_runs: formatWorkflowRunsMarkdown,
+  list_workflows: formatWorkflowsMarkdown,
+  list_commits: formatCommitsMarkdown,
+  list_branches: formatBranchesMarkdown,
+  list_collaborators: formatCollaboratorsMarkdown,
+  list_repository_variables: formatVariablesMarkdown,
+  list_organization_variables: formatVariablesMarkdown,
+  list_milestones: formatMilestonesMarkdown,
+  list_releases: formatReleasesMarkdown,
+  get_repository: formatRepositoryMarkdown,
+  get_commit: formatCommitDetailsMarkdown,
+};
+
+/**
+ * Converts structured JSON/object responses into clean, compact, token-saving Markdown
+ */
+export function jsonToMarkdown(data, actionName) {
   if (data === null || data === undefined) return "";
   if (typeof data !== "object") return String(data);
 
+  // 1. Dispatch directly by actionName if registered
+  if (actionName && ACTION_FORMATTERS[actionName]) {
+    return ACTION_FORMATTERS[actionName](data);
+  }
+
+  // 2. Shape-based automatic heuristics for common payloads
+  if (data.items && Array.isArray(data.items)) {
+    if (data.items[0]?.head && data.items[0]?.base) {
+      return formatPullRequestsMarkdown(data);
+    }
+    if (data.items[0]?.number && data.items[0]?.title) {
+      return formatIssuesMarkdown(data);
+    }
+  }
+  if (data.workflow_runs && Array.isArray(data.workflow_runs)) {
+    return formatWorkflowRunsMarkdown(data);
+  }
+  if (data.full_name && data.id && data.default_branch) {
+    return formatRepositoryMarkdown(data);
+  }
+
+  // 3. Array of objects
   if (Array.isArray(data)) {
     if (data.length === 0) return "_No items returned._";
-    if (typeof data[0] === "object" && data[0] !== null) {
-      const keys = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
-      if (keys.length <= 8) {
-        const header = `| ${keys.join(" | ")} |`;
-        const divider = `| ${keys.map(() => ":---").join(" | ")} |`;
-        const rows = data.map((item) =>
-          `| ${keys
-            .map((k) => {
-              const v = item[k];
-              if (v === null || v === undefined) return "";
-              if (typeof v === "object") return "`" + JSON.stringify(v) + "`";
-              return String(v).replace(/\|/g, "\\|").replace(/\n/g, " ");
-            })
-            .join(" | ")} |`
+    const first = data[0];
+    if (typeof first === "object" && first !== null) {
+      // Heuristic detection on first item
+      if (first.head && first.base) {
+        return formatPullRequestsMarkdown(data);
+      }
+      if (first.number && first.title) {
+        return formatIssuesMarkdown(data);
+      }
+      if (first.conclusion !== undefined && first.head_branch) {
+        return formatWorkflowRunsMarkdown(data);
+      }
+      if (first.sha && (first.author || first.commit)) {
+        return formatCommitsMarkdown(data);
+      }
+      if (first.name && first.protected !== undefined) {
+        return formatBranchesMarkdown(data);
+      }
+      if (first.login && (first.role_name !== undefined || first.permissions)) {
+        return formatCollaboratorsMarkdown(data);
+      }
+
+      // General table formatting with prioritized column selection
+      const allKeys = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
+      const priorityKeys = ["number", "id", "name", "title", "key", "state", "status", "type", "ref", "user", "login", "author", "created_at", "value"];
+      const sortedKeys = [
+        ...priorityKeys.filter((k) => allKeys.includes(k)),
+        ...allKeys.filter((k) => !priorityKeys.includes(k)),
+      ];
+      // Pick top 6 columns that are not large objects or bodies
+      const selectedKeys = sortedKeys.filter((k) => !["description", "body", "diff", "content", "decoded_content"].includes(k)).slice(0, 6);
+
+      if (selectedKeys.length > 0) {
+        return renderMarkdownTable(
+          data,
+          selectedKeys.map((k) => ({
+            header: k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " "),
+            get: (item) => {
+              const val = item[k];
+              if (val === null || val === undefined) return "-";
+              if (typeof val === "object") return Array.isArray(val) ? val.join(", ") : JSON.stringify(val);
+              return String(val);
+            },
+          }))
         );
-        return [header, divider, ...rows].join("\n");
       }
     }
     return data
-      .map((item) => `- ${typeof item === "object" ? JSON.stringify(item) : item}`)
+      .map((item) => {
+        if (typeof item === "object" && item !== null) {
+          const label = item.name || item.title || item.key || item.number || item.id || "Item";
+          const desc = item.status || item.state || item.description || "";
+          return `- **${label}**${desc ? `: ${desc}` : ""}`;
+        }
+        return `- ${item}`;
+      })
       .join("\n");
   }
 
+  // 4. Single structured object
   const lines = [];
   for (const [k, v] of Object.entries(data)) {
     if (v === null || v === undefined) continue;
     if (Array.isArray(v)) {
-      lines.push(`### ${k}\n\n` + jsonToMarkdown(v));
+      lines.push(`### ${k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " ")}\n\n` + jsonToMarkdown(v));
     } else if (typeof v === "object") {
       lines.push(`**${k}**:`);
       for (const [subK, subV] of Object.entries(v)) {
@@ -442,4 +728,99 @@ export function jsonToMarkdown(data) {
     }
   }
   return lines.join("\n");
+}
+
+/**
+ * Strips ANSI terminal color and control escape sequences.
+ */
+export function stripAnsi(text) {
+  if (!text) return "";
+  return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+}
+
+/**
+ * Intelligent CI log extractor: strips ANSI, scans for failure blocks,
+ * and extracts the root cause rather than only blind tail lines.
+ */
+export function extractSmartJobLog(rawLog, { tail_lines = 100, strip_ansi = true, smart_failure = true } = {}) {
+  if (!rawLog) return "";
+  let text = strip_ansi ? stripAnsi(rawLog) : rawLog;
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= tail_lines) {
+    return lines.join("\n");
+  }
+
+  if (smart_failure) {
+    const failureRegex = /(error:|fatal:|panic:|FAIL:|AssertionError|FAILED|Process completed with exit code [1-9]|exit status [1-9]|npm ERR!|BUILD FAILED|Traceback \(most recent call last\):)/i;
+    let matchIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (failureRegex.test(lines[i])) {
+        matchIdx = i;
+        break;
+      }
+    }
+
+    if (matchIdx !== -1) {
+      const start = Math.max(0, matchIdx - 15);
+      const end = Math.min(lines.length, matchIdx + 60);
+      const failureBlock = lines.slice(start, end).join("\n");
+      const tailStart = Math.max(end, lines.length - 25);
+      const tailBlock = lines.slice(tailStart).join("\n");
+
+      let result = `[... Truncated first ${start} lines ...]\n=== DETECTED FAILURE BLOCK (around line ${matchIdx + 1}) ===\n${failureBlock}`;
+      if (tailStart > end) {
+        result += `\n\n[... Truncated ${tailStart - end} intermediate lines ...]\n=== JOB TEARDOWN TAIL ===\n${tailBlock}`;
+      }
+      return result;
+    }
+  }
+
+  return `[... Truncated first ${lines.length - tail_lines} lines ...]\n` + lines.slice(-tail_lines).join("\n");
+}
+
+/**
+ * Universal Regex Symbol Extractor for code files (JS/TS, Python, Go, Rust, Ruby, Java, C#).
+ * Returns symbol signatures with 1-based line numbers to allow outline-first file inspection.
+ */
+export function extractSymbolOutline(content, filename = "") {
+  if (!content) return "";
+  const lines = content.split(/\r?\n/);
+  const symbols = [];
+
+  const patterns = [
+    /^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*([a-zA-Z0-9_$]+)/,
+    /^\s*(?:export\s+(?:default\s+)?)?class\s+([a-zA-Z0-9_$]+)/,
+    /^\s*(?:export\s+)?(?:interface|type|enum)\s+([a-zA-Z0-9_$]+)/,
+    /^\s*(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z0-9_$]+)\s*=>/,
+    /^\s*(?:async\s+)?def\s+([a-zA-Z0-9_]+)\s*\(/,
+    /^\s*class\s+([a-zA-Z0-9_]+)(?:\s*\(|\s*:)/,
+    /^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_]+)\s*\(/,
+    /^\s*type\s+([a-zA-Z0-9_]+)\s+(?:struct|interface)/,
+    /^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?(?:fn|struct|enum|trait|type)\s+([a-zA-Z0-9_]+)/,
+    /^\s*impl(?:\s+<[^>]+>)?\s+([a-zA-Z0-9_]+)/,
+    /^\s*(?:def|class|module)\s+([a-zA-Z0-9_:]+)/,
+  ];
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+      continue;
+    }
+
+    for (const pat of patterns) {
+      if (pat.test(line)) {
+        const indentLevel = line.search(/\S/);
+        const indentStr = " ".repeat(Math.min(indentLevel, 8));
+        symbols.push(`L${idx + 1}:${indentStr} ${trimmed.replace(/\{$/, "").trim()}`);
+        break;
+      }
+    }
+  }
+
+  if (symbols.length === 0) {
+    return `[No top-level function, class, or type declarations detected in ${filename || "file"}. Total lines: ${lines.length}]`;
+  }
+
+  return `=== SYMBOL OUTLINE (${symbols.length} declarations across ${lines.length} lines) ===\n` + symbols.join("\n");
 }
