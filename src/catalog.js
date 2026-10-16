@@ -149,10 +149,10 @@ function formatActionsAsMarkdown(result) {
  * Searches the action catalog.
  * Supports keyword search, domain filtering, and format toggle ('json' | 'markdown').
  */
-export function findActions(queryOrOpts = "", domain = "", format = "json") {
+export function findActions(queryOrOpts = "", domain = "", format = "markdown") {
   const query = typeof queryOrOpts === "object" ? queryOrOpts.query : queryOrOpts;
   const targetDomainStr = typeof queryOrOpts === "object" ? queryOrOpts.domain : domain;
-  const outputFormat = typeof queryOrOpts === "object" ? queryOrOpts.format || "json" : format;
+  const outputFormat = typeof queryOrOpts === "object" ? queryOrOpts.format || "markdown" : format;
 
   let actions = Array.from(ACTION_CATALOG.values());
 

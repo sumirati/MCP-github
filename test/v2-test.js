@@ -16,27 +16,27 @@ console.log(`[PASS] Total actions in catalog: ${catalogSize}`);
 assert(catalogSize >= 70, `Expected at least 70 actions, found ${catalogSize}`);
 
 // 2. Empty search domain breakdown
-const emptyResult = findActions("", "");
-console.log(`[PASS] findActions('', '') returned domain breakdown:`);
+const emptyResult = findActions("", "", "json");
+console.log(`[PASS] findActions('', '', 'json') returned domain breakdown:`);
 console.log(`       Available domains: ${Object.keys(emptyResult.available_domains).length}`);
 assert(Object.keys(emptyResult.available_domains).length >= 10, "Expected at least 10 domains in breakdown");
 
 // 3. Find actions - workflow / actions search
-const workflowResults = findActions("workflow", "");
-console.log(`[PASS] findActions('workflow') returned ${workflowResults.total_matches} matches`);
+const workflowResults = findActions("workflow", "", "json");
+console.log(`[PASS] findActions('workflow', '', 'json') returned ${workflowResults.total_matches} matches`);
 assert(workflowResults.total_matches >= 2, "Expected at least 2 workflow actions");
 const workflowActionNames = workflowResults.actions.map((a) => a.action);
 assert(workflowActionNames.includes("list_workflows") || workflowActionNames.includes("trigger_workflow"), "Missing workflow actions");
 console.log("       Workflow actions found:", workflowActionNames.join(", "));
 
 // 4. Find actions - pull request search
-const prResults = findActions("pull request", "");
-console.log(`[PASS] findActions('pull request') returned ${prResults.total_matches} matches`);
+const prResults = findActions("pull request", "", "json");
+console.log(`[PASS] findActions('pull request', '', 'json') returned ${prResults.total_matches} matches`);
 assert(prResults.total_matches >= 3, "Expected at least 3 PR actions");
 
 // 5. Find actions - domain filtering
-const issueDomainResults = findActions("", "issues");
-console.log(`[PASS] findActions(domain: 'issues') returned ${issueDomainResults.total_matches} actions`);
+const issueDomainResults = findActions("", "issues", "json");
+console.log(`[PASS] findActions(domain: 'issues', format: 'json') returned ${issueDomainResults.total_matches} actions`);
 assert(issueDomainResults.total_matches >= 4, "Expected issue actions");
 
 // 6. Parameter summary formatting
@@ -66,41 +66,41 @@ console.log(`[PASS] getAllTools() returns ${allTools.length} tools for legacy mo
 assert(allTools.length === catalogSize, "getAllTools should match catalog size");
 
 // 9. Artifact actions discovery
-const artifactResults = findActions("artifact", "");
-console.log(`[PASS] findActions('artifact') returned ${artifactResults.total_matches} matches`);
+const artifactResults = findActions("artifact", "", "json");
+console.log(`[PASS] findActions('artifact', '', 'json') returned ${artifactResults.total_matches} matches`);
 const artifactActionNames = artifactResults.actions.map((a) => a.action);
 assert(artifactActionNames.includes("list_workflow_run_artifacts"), "Missing list_workflow_run_artifacts");
 assert(artifactActionNames.includes("get_workflow_run_artifact"), "Missing get_workflow_run_artifact");
 console.log("       Artifact actions found:", artifactActionNames.join(", "));
 
 // 10. Branch protection action discovery
-const protectionResults = findActions("protection", "");
-console.log(`[PASS] findActions('protection') returned ${protectionResults.total_matches} matches`);
+const protectionResults = findActions("protection", "", "json");
+console.log(`[PASS] findActions('protection', '', 'json') returned ${protectionResults.total_matches} matches`);
 const protectionActionNames = protectionResults.actions.map((a) => a.action);
 assert(protectionActionNames.includes("get_branch_protection"), "Missing get_branch_protection");
 console.log("       Protection action found:", protectionActionNames.join(", "));
 
 // 11. System health check discovery
-const healthResults = findActions("health", "");
-console.log(`[PASS] findActions('health') returned ${healthResults.total_matches} matches`);
+const healthResults = findActions("health", "", "json");
+console.log(`[PASS] findActions('health', '', 'json') returned ${healthResults.total_matches} matches`);
 const healthActionNames = healthResults.actions.map((a) => a.action);
 assert(healthActionNames.includes("system_health_check"), "Missing system_health_check");
 
 // 11b. Team and group action discovery
-const groupResults = findActions("create_group", "");
-console.log(`[PASS] findActions('create_group') returned ${groupResults.total_matches} matches`);
+const groupResults = findActions("create_group", "", "json");
+console.log(`[PASS] findActions('create_group', '', 'json') returned ${groupResults.total_matches} matches`);
 assert(groupResults.actions.map((a) => a.action).includes("create_group"), "Missing create_group");
 assert.strictEqual(groupResults.actions[0].mutating, true, "create_group must be marked mutating");
-const teamResults = findActions("create_team", "");
+const teamResults = findActions("create_team", "", "json");
 assert(teamResults.actions.map((a) => a.action).includes("create_team"), "Missing create_team");
 assert.strictEqual(teamResults.actions[0].mutating, true, "create_team must be marked mutating");
 
-// 12. Smart format: markdown output support
-const mdResults = findActions("workflow", "", "markdown");
-assert(typeof mdResults === "string", "Expected markdown output string");
+// 12. Smart format: default markdown output support
+const mdResults = findActions("workflow", ""); // default format is markdown
+assert(typeof mdResults === "string", "Expected default markdown output string");
 assert(mdResults.includes("| Action | Domain | Mutating | Description |"), "Expected markdown table header");
 assert(mdResults.includes("`list_workflows`"), "Expected list_workflows in markdown table");
-console.log("[PASS] findActions format: 'markdown' rendered valid Markdown table");
+console.log("[PASS] findActions default format: 'markdown' rendered valid Markdown table");
 
 // 13. Registry metadata & server.json validation
 const serverJson = JSON.parse(fs.readFileSync(new URL("../server.json", import.meta.url), "utf8"));

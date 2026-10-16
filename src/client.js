@@ -71,9 +71,21 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
     let errorDetail = "";
     try {
       const errJson = await response.json();
-      errorDetail = JSON.stringify(errJson);
+      errorDetail = typeof errJson === "object" ? JSON.stringify(errJson) : String(errJson);
     } catch {
       errorDetail = await response.text();
+    }
+
+    // 1. Primary and Secondary Rate Limits (Abuse Detection / Concurrency / 429)
+    const isSecondaryRateLimit =
+      response.status === 429 ||
+      (response.status === 403 && errorDetail.toLowerCase().includes("secondary rate limit"));
+
+    if (isSecondaryRateLimit) {
+      const retryAfter = response.headers.get("retry-after") || "60";
+      throw new Error(
+        `GitHub API Secondary Rate Limit (abuse detection) triggered. Back off and wait ${retryAfter}s before retrying. (Status ${response.status}): ${errorDetail}`
+      );
     }
 
     if (response.status === 403 && remaining === "0") {
@@ -81,6 +93,15 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
       throw new Error(
         `GitHub API rate limit exceeded. Limit resets at ${resetDate}. (Status ${response.status}): ${errorDetail}`
       );
+    }
+
+    // 2. Scope Diagnostics on 403 or 404 (e.g. private repo masked as 404 or insufficient token permissions)
+    if (response.status === 403 || response.status === 404) {
+      const currentScopes = response.headers.get("x-oauth-scopes");
+      const acceptedScopes = response.headers.get("x-accepted-oauth-scopes");
+      if (acceptedScopes) {
+        errorDetail += ` [Scope Diagnostic: Current token has [${currentScopes || "none"}], endpoint requires [${acceptedScopes}]]`;
+      }
     }
 
     throw new Error(`GitHub API error (${response.status} ${response.statusText}): ${errorDetail}`);
@@ -95,6 +116,13 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
   }
 
   const data = await response.json();
+
+  // 3. Guard against ghost writes where server returns 201 Created with id: null
+  if (response.status === 201 && data && typeof data === "object" && !Array.isArray(data) && data.id === null) {
+    throw new Error(
+      `GitHub API mutation anomaly: Server responded with 201 Created but entity 'id' is null (write was not persisted).`
+    );
+  }
   const linkHeader = response.headers.get("link");
   const parsedLinks = parseLinkHeader(linkHeader);
 

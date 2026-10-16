@@ -77,14 +77,18 @@ export function summarizePullRequest(pr, truncateBody = true) {
   };
 }
 
-export function summarizeCommit(c) {
+export function summarizeCommit(c, options = {}) {
   if (!c) return null;
   const sha = c.sha || c.id;
   const commitObj = c.commit || {};
+  const rawMessage = commitObj.message || c.message || "";
+  const headline = rawMessage.split("\n")[0] || "";
+  const fullMessage = options.full_message ?? false;
+
   return {
     sha,
     short_sha: sha ? sha.slice(0, 7) : null,
-    message: commitObj.message || c.message || "",
+    message: fullMessage ? rawMessage : headline,
     author: {
       name: commitObj.author ? commitObj.author.name : c.author_name,
       email: commitObj.author ? commitObj.author.email : c.author_email,

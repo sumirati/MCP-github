@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "start": "node index.js",
-    "test": "GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/v2-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/mcp-protocol-test.js"
+    "test": "GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/v2-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/client-resilience-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/mcp-protocol-test.js"
   },
   "repository": {
     "type": "git",
