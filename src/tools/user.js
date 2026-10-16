@@ -17,19 +17,11 @@ export const GetOrganizationSchema = z.object({
 
 export const CreateTeamSchema = z.object({
   org: z.string().describe("The organization name under which to create the team (e.g. 'my-org')"),
-  name: z.string().describe("The name of the team / group (e.g. 'Core Developers' or 'Platform Team')"),
+  name: z.string().describe("The name of the team (e.g. 'Core Developers' or 'Platform Team')"),
   description: z.string().optional().describe("A short description of the team's purpose"),
-  privacy: z.enum(["secret", "closed"]).optional().default("closed").describe("Privacy level: 'closed' (visible to org members) or 'secret' (only visible to team members). Default: 'closed'"),
-  permission: z.enum(["pull", "push", "admin"]).optional().default("pull").describe("Default repository permission: 'pull', 'push', or 'admin'"),
-  parent_team_id: z.number().optional().describe("Parent team numeric ID to create this team as a nested subteam / subgroup"),
-});
-
-export const CreateGroupSchema = z.object({
-  org: z.string().describe("The organization name under which to create the group / team (e.g. 'my-org')"),
-  name: z.string().describe("The name of the group / team (e.g. 'Platform Team' or 'Subsystem')"),
-  description: z.string().optional().describe("Short description of the group's purpose"),
-  privacy: z.enum(["secret", "closed"]).optional().default("closed").describe("Privacy level: 'closed' (visible to org members) or 'secret' (only visible to team members)"),
-  parent_id: z.number().optional().describe("Parent group/team numeric ID to create this as a nested subgroup / subteam"),
+  privacy: z.enum(["secret", "closed"]).optional().default("closed").describe("Privacy level: 'closed' (visible to org members) or 'secret' (only visible to team members; cannot be used with parent_team_id). Default: 'closed'"),
+  permission: z.enum(["pull", "push"]).optional().default("pull").describe("Default repository permission for team members: 'pull' or 'push' (default: 'pull')"),
+  parent_team_id: z.number().optional().describe("Parent team numeric ID to create this team as a nested child team"),
 });
 
 export const ListUserOrganizationsSchema = z.object({
@@ -74,14 +66,8 @@ export const userTools = [
   },
   {
     name: "create_team",
-    description: "Create a new team in a GitHub organization. Supports parent_team_id to establish nested subteams / child groups. Requires organization owner/admin privileges and GITHUB_READ_ONLY=false.",
+    description: "Create a new team in a GitHub organization. Supports parent_team_id to establish nested child teams. Requires organization owner/admin privileges and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateTeamSchema),
-    mutating: true,
-  },
-  {
-    name: "create_group",
-    description: "Create a new group / team in a GitHub organization. Supports parent_id to create nested child groups / subteams. (Alias for create_team for cross-platform GitLab/GitHub parity). Requires organization admin privileges and GITHUB_READ_ONLY=false.",
-    inputSchema: zodToJsonSchema(CreateGroupSchema),
     mutating: true,
   },
   {
@@ -139,13 +125,14 @@ export const userHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/user/orgs?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map((org) => ({
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((org) => ({
       id: org.id,
       login: org.login,
       description: org.description,
       html_url: `https://github.com/${org.login}`,
     }));
+    return res.pagination ? { pagination: res.pagination, organizations: items } : items;
   },
 
   get_organization: async (args) => {
@@ -156,10 +143,11 @@ export const userHandlers = {
 
   create_team: async (args) => {
     const parsed = CreateTeamSchema.parse(args);
+    const effectivePrivacy = parsed.parent_team_id !== undefined ? "closed" : parsed.privacy;
     const body = {
       name: parsed.name,
       ...(parsed.description ? { description: parsed.description } : {}),
-      privacy: parsed.privacy,
+      privacy: effectivePrivacy,
       permission: parsed.permission,
       ...(parsed.parent_team_id !== undefined ? { parent_team_id: parsed.parent_team_id } : {}),
     };
@@ -168,17 +156,6 @@ export const userHandlers = {
       body: JSON.stringify(body),
     });
     return summarizeTeam(res);
-  },
-
-  create_group: async (args) => {
-    const parsed = CreateGroupSchema.parse(args);
-    return await userHandlers.create_team({
-      org: parsed.org,
-      name: parsed.name,
-      description: parsed.description,
-      privacy: parsed.privacy,
-      parent_team_id: parsed.parent_id,
-    });
   },
 
   list_accessible_repositories: async (args) => {
@@ -192,7 +169,8 @@ export const userHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/user/repos?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map(summarizeRepository);
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map(summarizeRepository);
+    return res.pagination ? { pagination: res.pagination, repositories: items } : items;
   },
 };

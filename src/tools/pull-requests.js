@@ -57,7 +57,10 @@ export const CreatePullRequestCommentSchema = RepoParamsSchema.extend({
   body: z.string().describe("Markdown text of the inline review comment"),
   commit_id: z.string().describe("Full SHA of the specific commit being commented on"),
   path: z.string().describe("Relative repository file path of the file being commented on"),
-  line: z.number().describe("Line index in the unified diff to anchor the review comment"),
+  line: z.number().describe("The line number in the file blob that the comment applies to"),
+  side: z.enum(["LEFT", "RIGHT"]).optional().default("RIGHT").describe("Side of the diff that the comment applies to: 'LEFT' (deletions) or 'RIGHT' (additions/context, default: 'RIGHT')"),
+  start_line: z.number().optional().describe("Optional first line number in the file blob for a multi-line comment"),
+  start_side: z.enum(["LEFT", "RIGHT"]).optional().describe("Optional starting side ('LEFT' or 'RIGHT') for a multi-line comment"),
 });
 
 export const CreatePullRequestReplySchema = RepoParamsSchema.extend({
@@ -76,16 +79,21 @@ export const CreatePullRequestReviewSchema = RepoParamsSchema.extend({
   pull_number: z.number().describe("Pull request number to review"),
   event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]).describe("Review decision action: 'APPROVE', 'REQUEST_CHANGES', or 'COMMENT'"),
   body: z.string().optional().describe("Overall review summary comment in markdown"),
+  commit_id: z.string().optional().describe("Optional SHA of the commit that needs a review (defaults to latest PR HEAD)"),
   comments: z
     .array(
       z.object({
         path: z.string().describe("Relative file path being reviewed"),
-        position: z.number().optional().describe("Line index in diff"),
+        line: z.number().optional().describe("The line number in the file blob that the comment applies to (GitHub API 2022-11-28 standard)"),
+        side: z.enum(["LEFT", "RIGHT"]).optional().describe("Side of the diff: 'LEFT' or 'RIGHT' (default: 'RIGHT')"),
+        start_line: z.number().optional().describe("Optional start line number for multi-line review comments"),
+        start_side: z.enum(["LEFT", "RIGHT"]).optional().describe("Optional start side for multi-line review comments"),
+        position: z.number().optional().describe("Legacy diff hunk line index (prefer 'line')"),
         body: z.string().describe("Review comment text"),
       })
     )
     .optional()
-    .describe("Optional inline draft comments to submit with the review"),
+    .describe("Optional inline review comments to submit with the review"),
 });
 
 export const pullRequestTools = [
@@ -129,7 +137,7 @@ export const pullRequestTools = [
   },
   {
     name: "create_pull_request_comment",
-    description: "Post an inline review comment anchored to a specific file and line in the pull request diff. Requires commit_id, path, and line index. Requires write permissions and GITHUB_READ_ONLY=false.",
+    description: "Post an inline review comment anchored to a specific file and line number in the pull request. Requires commit_id, path, and line number in the file. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreatePullRequestCommentSchema),
     mutating: true,
   },
@@ -167,8 +175,9 @@ export const pullRequestHandlers = {
     if (parsed.base) q.set("base", parsed.base);
 
     const res = await githubRequest(`/repos/${owner}/${repo}/pulls?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map((pr) => summarizePullRequest(pr, true));
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((pr) => summarizePullRequest(pr, true));
+    return res.pagination ? { pagination: res.pagination, pull_requests: items } : items;
   },
 
   get_pull_request: async (args) => {
@@ -252,8 +261,8 @@ export const pullRequestHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/comments?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map((c) => ({
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((c) => ({
       id: c.id,
       path: c.path,
       line: c.line || c.original_line,
@@ -262,6 +271,7 @@ export const pullRequestHandlers = {
       created_at: c.created_at,
       html_url: c.html_url,
     }));
+    return res.pagination ? { pagination: res.pagination, comments: items } : items;
   },
 
   create_pull_request_comment: async (args) => {
@@ -272,11 +282,23 @@ export const pullRequestHandlers = {
       commit_id: parsed.commit_id,
       path: parsed.path,
       line: parsed.line,
+      side: parsed.side,
+      ...(parsed.start_line !== undefined ? { start_line: parsed.start_line } : {}),
+      ...(parsed.start_side !== undefined ? { start_side: parsed.start_side } : {}),
     };
-    return await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/comments`, {
+    const c = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/comments`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+    return {
+      id: c.id,
+      path: c.path,
+      line: c.line || c.original_line,
+      user: c.user ? c.user.login : null,
+      body: c.body,
+      created_at: c.created_at,
+      html_url: c.html_url,
+    };
   },
 
   create_pull_request_reply: async (args) => {
@@ -286,10 +308,19 @@ export const pullRequestHandlers = {
       body: parsed.body,
       in_reply_to: parsed.comment_id,
     };
-    return await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/comments`, {
+    const c = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/comments`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+    return {
+      id: c.id,
+      path: c.path,
+      line: c.line || c.original_line,
+      user: c.user ? c.user.login : null,
+      body: c.body,
+      created_at: c.created_at,
+      html_url: c.html_url,
+    };
   },
 
   list_pull_request_reviews: async (args) => {
@@ -300,8 +331,9 @@ export const pullRequestHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/reviews?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map(summarizePullRequestReview);
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map(summarizePullRequestReview);
+    return res.pagination ? { pagination: res.pagination, reviews: items } : items;
   },
 
   create_pull_request_review: async (args) => {
@@ -310,6 +342,7 @@ export const pullRequestHandlers = {
     const body = {
       event: parsed.event,
       ...(parsed.body ? { body: parsed.body } : {}),
+      ...(parsed.commit_id ? { commit_id: parsed.commit_id } : {}),
       ...(parsed.comments ? { comments: parsed.comments } : {}),
     };
     const res = await githubRequest(`/repos/${owner}/${repo}/pulls/${parsed.pull_number}/reviews`, {

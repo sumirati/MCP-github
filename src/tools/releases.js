@@ -30,6 +30,7 @@ export const ListTagsSchema = RepoParamsSchema.extend({
 export const CreateTagSchema = RepoParamsSchema.extend({
   tag: z.string().describe("New tag name to create (e.g. 'v1.1.0')"),
   sha: z.string().describe("Full git commit SHA to point the tag to"),
+  message: z.string().optional().describe("Optional tag message. If provided, creates an annotated git tag object; otherwise creates a lightweight tag reference."),
 });
 
 export const releaseTools = [
@@ -56,7 +57,7 @@ export const releaseTools = [
   },
   {
     name: "create_tag",
-    description: "Create a lightweight git tag reference pointing to a specific commit SHA. Requires write permissions and GITHUB_READ_ONLY=false.",
+    description: "Create a git tag (lightweight reference or annotated tag object when message is provided) pointing to a specific commit SHA. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateTagSchema),
     mutating: true,
   },
@@ -71,8 +72,9 @@ export const releaseHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/repos/${owner}/${repo}/releases?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map(summarizeRelease);
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map(summarizeRelease);
+    return res.pagination ? { pagination: res.pagination, releases: items } : items;
   },
 
   get_release: async (args) => {
@@ -116,29 +118,45 @@ export const releaseHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/repos/${owner}/${repo}/tags?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map((t) => ({
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((t) => ({
       name: t.name,
       commit: {
         sha: t.commit?.sha,
         short_sha: t.commit?.sha ? t.commit.sha.slice(0, 7) : null,
       },
     }));
+    return res.pagination ? { pagination: res.pagination, tags: items } : items;
   },
 
   create_tag: async (args) => {
     const { owner, repo } = normalizeRepoParams(args);
     const parsed = CreateTagSchema.parse(args);
+    let targetSha = parsed.sha;
+    if (parsed.message) {
+      const tagObj = await githubRequest(`/repos/${owner}/${repo}/git/tags`, {
+        method: "POST",
+        body: JSON.stringify({
+          tag: parsed.tag,
+          message: parsed.message,
+          object: parsed.sha,
+          type: "commit",
+        }),
+      });
+      if (tagObj?.sha) {
+        targetSha = tagObj.sha;
+      }
+    }
     const res = await githubRequest(`/repos/${owner}/${repo}/git/refs`, {
       method: "POST",
       body: JSON.stringify({
         ref: `refs/tags/${parsed.tag}`,
-        sha,
+        sha: targetSha,
       }),
     });
     return {
       ref: res.ref,
-      sha: res.object?.sha,
+      sha: res.object?.sha || targetSha,
     };
   },
 };

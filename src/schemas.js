@@ -16,11 +16,6 @@ export const RepoParamsSchema = z.object({
   repo: z.string().describe("Repository name (e.g. 'Hello-World' or 'mcp-github')"),
 });
 
-export const OptionalRepoParamsSchema = z.object({
-  owner: z.string().optional().describe("Repository owner (user or organization)"),
-  repo: z.string().describe("Repository name or full path (e.g. 'mcp-github' or 'owner/mcp-github')"),
-});
-
 export function normalizeRepoParams(args) {
   let { owner, repo } = args;
   if (repo && repo.includes("/")) {

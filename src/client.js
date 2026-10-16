@@ -70,10 +70,20 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
   if (!response.ok) {
     let errorDetail = "";
     try {
-      const errJson = await response.json();
-      errorDetail = typeof errJson === "object" ? JSON.stringify(errJson) : String(errJson);
+      if (typeof response.text === "function") {
+        const rawErr = await response.text();
+        try {
+          const errJson = JSON.parse(rawErr);
+          errorDetail = typeof errJson === "object" ? JSON.stringify(errJson) : String(errJson);
+        } catch {
+          errorDetail = rawErr;
+        }
+      } else {
+        const errJson = await response.json();
+        errorDetail = typeof errJson === "object" ? JSON.stringify(errJson) : String(errJson);
+      }
     } catch {
-      errorDetail = await response.text();
+      errorDetail = response.statusText || "Unknown error";
     }
 
     // 1. Primary and Secondary Rate Limits (Abuse Detection / Concurrency / 429)
@@ -107,7 +117,7 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
     throw new Error(`GitHub API error (${response.status} ${response.statusText}): ${errorDetail}`);
   }
 
-  if (response.status === 204) {
+  if (response.status === 204 || response.status === 205) {
     return { success: true };
   }
 
@@ -115,21 +125,28 @@ export async function githubRequest(endpoint, options = {}, responseType = "json
     return await response.text();
   }
 
-  const data = await response.json();
-
-  // 3. Guard against ghost writes where server returns 201 Created with id: null
-  if (response.status === 201 && data && typeof data === "object" && !Array.isArray(data) && data.id === null) {
-    throw new Error(
-      `GitHub API mutation anomaly: Server responded with 201 Created but entity 'id' is null (write was not persisted).`
-    );
+  let data;
+  if (typeof response.text === "function") {
+    const rawText = await response.text();
+    if (!rawText || !rawText.trim()) {
+      return { success: true, status: response.status };
+    }
+    data = JSON.parse(rawText);
+  } else {
+    data = await response.json();
   }
+
   const linkHeader = response.headers.get("link");
   const parsedLinks = parseLinkHeader(linkHeader);
 
   if (Array.isArray(data) && parsedLinks) {
+    const nextMatch = parsedLinks.next?.match(/[?&]page=(\d+)/);
+    const lastMatch = parsedLinks.last?.match(/[?&]page=(\d+)/);
     return {
       pagination: {
         links: parsedLinks,
+        ...(nextMatch ? { next_page: parseInt(nextMatch[1], 10) } : {}),
+        ...(lastMatch ? { last_page: parseInt(lastMatch[1], 10) } : {}),
         rate_limit_remaining: remaining ? parseInt(remaining, 10) : undefined,
       },
       items: data,

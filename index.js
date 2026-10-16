@@ -94,7 +94,7 @@ const EAGER_TOOLS = [
     name: "github_find_actions",
     title: "Find GitHub Actions",
     description:
-      "Search and discover available GitHub actions in the 75-action catalog by keyword query or domain filter. Use this discovery tool first whenever you need to perform an action outside the 3 eager daily drivers (e.g. managing PRs, issues, releases, workflows, collaborators, webhooks, variables, security alerts). Returns matching action names, domain categories, mutating flags, descriptions, and complete parameter schemas so you can construct the call for github_execute_action.",
+      `Search and discover available GitHub actions in the ${ACTION_CATALOG.size}-action catalog by keyword query or domain filter. Use this discovery tool first whenever you need to perform an action outside the 3 eager daily drivers (e.g. managing PRs, issues, releases, workflows, collaborators, webhooks, variables, security alerts). Returns matching action names, domain categories, mutating flags, descriptions, and parameter signatures so you can construct the call for github_execute_action.`,
     inputSchema: zodToJsonSchema(GithubFindActionsSchema),
     annotations: {
       readOnlyHint: true,
@@ -107,7 +107,7 @@ const EAGER_TOOLS = [
     name: "github_execute_action",
     title: "Execute GitHub Action",
     description:
-      "Execute any supported GitHub action from the 75-action catalog by action name with parameters. Requires the exact action name (discovered via github_find_actions) and its corresponding argument dictionary. Output is automatically compressed with strict token projection filters (stripping URLs, avatar links, empty hashes, node_ids) to guarantee 70%+ token savings. Mutating actions are blocked when running in read-only mode (GITHUB_READ_ONLY=true).",
+      `Execute any supported GitHub action from the ${ACTION_CATALOG.size}-action catalog by action name with parameters. Requires the exact action name (discovered via github_find_actions) and its corresponding argument dictionary. Output is automatically compressed with strict token projection filters (stripping hypermedia URL templates, avatar links, empty fields, node_ids) and formatted as compact Markdown by default. Mutating actions are blocked when running in read-only mode (GITHUB_READ_ONLY=true).`,
     inputSchema: zodToJsonSchema(GithubExecuteActionSchema),
     annotations: {
       readOnlyHint: false,
@@ -120,7 +120,7 @@ const EAGER_TOOLS = [
     name: "get_file_contents",
     title: "Get File Contents",
     description:
-      "Read current file contents or list directory entries from a repository at a specified git ref without cloning. Automatically decodes Base64 file contents into plain text UTF-8 in 'decoded_content'. Eager daily driver tool for inspecting source code, configuration files, and directory layouts.",
+      "Read current file contents, extract symbol outlines, slice line ranges, or list directory entries from a repository at a specified git ref without cloning. Automatically decodes Base64 file contents into plain text UTF-8. Eager daily driver tool for inspecting source code, configuration files, and directory layouts.",
     inputSchema: zodToJsonSchema(GetFileContentsSchema),
     annotations: {
       readOnlyHint: true,
@@ -133,7 +133,7 @@ const EAGER_TOOLS = [
     name: "get_repository",
     title: "Get Repository",
     description:
-      "Get comprehensive repository metadata, visibility, description, default branch, clone URLs, star count, and topics for an owner/repo. Eager daily driver tool for verifying repository configuration and existence.",
+      "Get comprehensive repository metadata, visibility, description, default branch, HTML URL, star count, fork count, and open issues count for an owner/repo. Eager daily driver tool for verifying repository configuration and existence.",
     inputSchema: zodToJsonSchema(GetRepositorySchema),
     annotations: {
       readOnlyHint: true,
@@ -157,7 +157,7 @@ const EAGER_TOOLS = [
   },
 ];
 
-function formatResult(result, format = DEFAULT_FORMAT) {
+function formatResult(result, format = DEFAULT_FORMAT, actionName = undefined) {
   if (result && Array.isArray(result.content)) {
     return result;
   }
@@ -176,7 +176,7 @@ function formatResult(result, format = DEFAULT_FORMAT) {
       content: [
         {
           type: "text",
-          text: jsonToMarkdown(result),
+          text: jsonToMarkdown(result, actionName),
         },
       ],
     };
@@ -194,7 +194,7 @@ function formatResult(result, format = DEFAULT_FORMAT) {
 const server = new Server(
   {
     name: "@sumirati/mcp-github",
-    version: "2.1.0",
+    version: "2.2.0",
   },
   {
     capabilities: {
@@ -235,30 +235,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const parsed = GithubExecuteActionSchema.parse(args);
       const actionParams = parsed.params || parsed.parameters || {};
       const result = await executeAction(parsed.action, actionParams, { format: parsed.format });
-      return formatResult(result, parsed.format);
+      return formatResult(result, parsed.format, parsed.action);
     }
 
-    if (name === "get_file_contents") {
-      const raw = await repositoryHandlers.get_file_contents(args);
-      const result = projectOutput(raw) || raw;
-      return formatResult(result, args?.format);
-    }
-
-    if (name === "get_repository") {
-      const raw = await repositoryHandlers.get_repository(args);
-      const result = projectOutput(raw) || raw;
-      return formatResult(result, args?.format || DEFAULT_FORMAT);
-    }
-
-    if (name === "get_commit") {
-      const raw = await commitHandlers.get_commit(args);
-      const result = projectOutput(raw) || raw;
-      return formatResult(result, args?.format || DEFAULT_FORMAT);
-    }
-
-    // Direct action invocation fallback for seamless backwards compatibility
-    const result = await executeAction(name, args, { format: args?.format || DEFAULT_FORMAT });
-    return formatResult(result, args?.format || DEFAULT_FORMAT);
+    // Eager tools (get_file_contents, get_repository, get_commit) and direct catalog actions
+    const requestedFormat = args?.format || DEFAULT_FORMAT;
+    const result = await executeAction(name, args, { format: requestedFormat });
+    return formatResult(result, requestedFormat, name);
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -275,7 +258,7 @@ async function runServer() {
   const modeStr = isReadOnly() ? " [READ-ONLY MODE: mutating actions disabled]" : "";
   const legacyStr = shouldExposeAllTools() ? " [LEGACY MODE: all tools exposed]" : " [HYBRID 5-TOOL MODE]";
   console.error(
-    `GitHub MCP Server v2.1.0 running on stdio (${ACTION_CATALOG.size} actions in catalog)${modeStr}${legacyStr}`
+    `GitHub MCP Server v2.2.0 running on stdio (${ACTION_CATALOG.size} actions in catalog)${modeStr}${legacyStr}`
   );
 }
 

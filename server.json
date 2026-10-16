@@ -7,12 +7,12 @@
     "url": "https://github.com/sumirati/mcp-github",
     "source": "github"
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@sumirati/mcp-github",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "transport": {
         "type": "stdio"
       },
@@ -36,9 +36,15 @@
           "isRequired": false
         },
         {
-          "name": "GITHUB_TOOL_DOMAINS",
-          "description": "Comma-separated domain whitelist to restrict registered tools and preserve context window tokens (e.g. 'repositories,pull-requests,issues')",
-          "default": "*",
+          "name": "GITHUB_EXPOSE_ALL_TOOLS",
+          "description": "Set to 'true' to expose all 83 tools directly instead of the 5-tool hybrid discovery mode",
+          "default": "false",
+          "isRequired": false
+        },
+        {
+          "name": "MCP_OUTPUT_FORMAT",
+          "description": "Default output format for tool responses ('markdown' or 'json')",
+          "default": "markdown",
           "isRequired": false
         }
       ]

@@ -108,8 +108,8 @@ export const extendedHandlers = {
       per_page: parsed.per_page.toString(),
     });
     const res = await githubRequest(`/repos/${owner}/${repo}/hooks?${q.toString()}`);
-    const items = Array.isArray(res) ? res : [];
-    return items.map((h) => ({
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((h) => ({
       id: h.id,
       name: h.name,
       active: h.active,
@@ -121,6 +121,7 @@ export const extendedHandlers = {
       updated_at: h.updated_at,
       created_at: h.created_at,
     }));
+    return res.pagination ? { pagination: res.pagination, webhooks: items } : items;
   },
 
   get_repository_webhook: async (args) => {
@@ -170,10 +171,19 @@ export const extendedHandlers = {
       description: parsed.description,
       context: parsed.context,
     };
-    return await githubRequest(`/repos/${owner}/${repo}/statuses/${encodeURIComponent(parsed.sha)}`, {
+    const s = await githubRequest(`/repos/${owner}/${repo}/statuses/${encodeURIComponent(parsed.sha)}`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+    return {
+      id: s.id,
+      state: s.state,
+      description: s.description,
+      target_url: s.target_url,
+      context: s.context,
+      created_at: s.created_at,
+      updated_at: s.updated_at,
+    };
   },
 
   list_dependabot_alerts: async (args) => {
@@ -187,8 +197,8 @@ export const extendedHandlers = {
     if (parsed.severity) q.set("severity", parsed.severity);
 
     const res = await githubRequest(`/repos/${owner}/${repo}/dependabot/alerts?${q.toString()}`);
-    const items = Array.isArray(res) ? res : [];
-    return items.map((a) => ({
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((a) => ({
       number: a.number,
       state: a.state,
       dependency: {
@@ -205,5 +215,6 @@ export const extendedHandlers = {
       created_at: a.created_at,
       fixed_at: a.fixed_at,
     }));
+    return res.pagination ? { pagination: res.pagination, alerts: items } : items;
   },
 };

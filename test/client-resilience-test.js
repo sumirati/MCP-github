@@ -82,41 +82,69 @@ try {
   );
   console.log("[PASS] 403 scope diagnostic correctly pinpoints missing admin:org scopes");
 
-  // Test 6: 201 Ghost write guard (id is null)
+  // Test 6: Empty body on HTTP 201 Created (e.g. POST /repos/{owner}/{repo}/actions/variables) & 202 Accepted
   global.fetch = async () => ({
     ok: true,
     status: 201,
     statusText: "Created",
     headers: new Headers(),
-    json: async () => ({ id: null, title: "Ghost Issue" }),
+    text: async () => "",
   });
-  await assert.rejects(
-    () => githubRequest("/repos/test/repo/issues", { method: "POST" }),
-    /GitHub API mutation anomaly.*entity 'id' is null/
-  );
-  console.log("[PASS] 201 ghost write (null id) detected and blocked");
+  const empty201 = await githubRequest("/repos/test/repo/actions/variables", { method: "POST" });
+  assert.strictEqual(empty201.success, true, "Empty 201 response must resolve cleanly with { success: true }");
+  assert.strictEqual(empty201.status, 201);
+  console.log("[PASS] Empty-body HTTP 201 Created (GitHub Actions Variables API) handled without SyntaxError");
+
+  // Test 6b: Link header pagination unwrapping in list_repository_webhooks & list_dependabot_alerts
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: new Headers({
+      link: '<https://api.github.com/repositories/1/hooks?page=2>; rel="next"',
+      "x-ratelimit-remaining": "4999",
+    }),
+    text: async () =>
+      JSON.stringify([
+        {
+          id: 999,
+          name: "web",
+          active: true,
+          events: ["push"],
+          config: { url: "https://example.com/webhook", content_type: "json" },
+        },
+      ]),
+  });
+  const pagedHooks = await githubRequest("/repos/test/repo/hooks");
+  assert(Array.isArray(pagedHooks.items), "Expected items array in paginated response");
+  assert.strictEqual(pagedHooks.items.length, 1);
+  console.log("[PASS] Link header pagination wrapper verified");
 
 } finally {
   global.fetch = originalFetch;
 }
 
-// Test 7: projectOutput hardening (html_url preservation, empty collections, depth guard)
+// Test 7: projectOutput hardening (html_url preservation, hypermedia template removal, empty collections, depth guard)
 import { projectOutput, stripAnsi, extractSmartJobLog, extractSymbolOutline } from "../src/helpers.js";
 
-// Verify html_url preservation and noise key removal
+// Verify html_url preservation and GitHub REST API v3 hypermedia template removal
 const samplePayload = {
   id: 42,
   html_url: "https://github.com/octocat/Hello-World/releases/tag/v1.0.0",
   node_id: "MDQ6VXNlcjE=",
   avatar_url: "https://github.com/images/error/octocat_happy.gif",
   url: "https://api.github.com/repos/octocat/Hello-World",
+  issues_url: "https://api.github.com/repos/octocat/Hello-World/issues{/number}",
+  pulls_url: "https://api.github.com/repos/octocat/Hello-World/pulls{/number}",
 };
 const cleaned = projectOutput(samplePayload);
 assert.strictEqual(cleaned.html_url, "https://github.com/octocat/Hello-World/releases/tag/v1.0.0", "html_url must be preserved");
 assert.strictEqual(cleaned.avatar_url, undefined, "avatar_url must be stripped");
 assert.strictEqual(cleaned.node_id, undefined, "node_id must be stripped");
 assert.strictEqual(cleaned.url, undefined, "internal api.github.com url must be stripped");
-console.log("[PASS] projectOutput preserves html_url while stripping noise keys and api.github.com URLs");
+assert.strictEqual(cleaned.issues_url, undefined, "RFC 6570 issues_url template must be stripped");
+assert.strictEqual(cleaned.pulls_url, undefined, "RFC 6570 pulls_url template must be stripped");
+console.log("[PASS] projectOutput preserves html_url while stripping noise keys, RFC 6570 templates, and api.github.com URLs");
 
 // Verify empty root collections are preserved
 assert.deepStrictEqual(projectOutput({}), {}, "Empty root object must be preserved as {}");

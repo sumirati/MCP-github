@@ -79,7 +79,7 @@ export function summarizePullRequest(pr, truncateBody = true) {
 
 export function summarizeCommit(c, options = {}) {
   if (!c) return null;
-  const sha = c.sha || c.id;
+  const sha = c.sha;
   const commitObj = c.commit || {};
   const rawMessage = commitObj.message || c.message || "";
   const headline = rawMessage.split("\n")[0] || "";
@@ -90,9 +90,9 @@ export function summarizeCommit(c, options = {}) {
     short_sha: sha ? sha.slice(0, 7) : null,
     message: fullMessage ? rawMessage : headline,
     author: {
-      name: commitObj.author ? commitObj.author.name : c.author_name,
-      email: commitObj.author ? commitObj.author.email : c.author_email,
-      date: commitObj.author ? commitObj.author.date : c.authored_date,
+      name: commitObj.author?.name || c.author?.login || null,
+      email: commitObj.author?.email || null,
+      date: commitObj.author?.date || null,
     },
     html_url: c.html_url,
   };
@@ -387,12 +387,54 @@ const NOISE_KEYS = new Set([
   "gists_url",
   "following_url",
   "followers_url",
+  "archive_url",
+  "assignees_url",
+  "blobs_url",
+  "branches_url",
+  "collaborators_url",
+  "comments_url",
+  "commits_url",
+  "compare_url",
+  "contents_url",
+  "contributors_url",
+  "deployments_url",
+  "downloads_url",
+  "forks_url",
+  "git_commits_url",
+  "git_refs_url",
+  "git_tags_url",
+  "git_url",
+  "hooks_url",
+  "issue_comment_url",
+  "issue_events_url",
+  "issues_url",
+  "keys_url",
+  "labels_url",
+  "languages_url",
+  "merges_url",
+  "milestones_url",
+  "notifications_url",
+  "pulls_url",
+  "releases_url",
+  "ssh_url",
+  "stargazers_url",
+  "statuses_url",
+  "subscribers_url",
+  "subscription_url",
+  "svn_url",
+  "tags_url",
+  "teams_url",
+  "trees_url",
+  "timeline_url",
+  "performed_via_github_app",
+  "sub_issues_summary",
 ]);
 
 /**
- * Universal token compression filter that strips redundant metadata:
- * avatar URLs, Gravatar IDs, node IDs, internal API links, and null/empty fields.
- * Preserves high-signal functional data (IDs, names, diffs, bodies, states, timestamps, html_url).
+ * Universal token compression filter that strips redundant GitHub REST API v3 metadata:
+ * avatar URLs, Gravatar IDs, GraphQL node IDs, RFC 6570 hypermedia URL templates,
+ * internal api.github.com self-links, and null/empty fields.
+ * Preserves high-signal functional data (IDs, numbers, names, diffs, bodies, states, timestamps, html_url).
  * Hardened with maxDepth recursion guard (32) and preserves empty root collections.
  */
 export function projectOutput(val, depth = 0, maxDepth = 32) {
@@ -408,6 +450,17 @@ export function projectOutput(val, depth = 0, maxDepth = 32) {
   for (const [k, v] of Object.entries(val)) {
     if (NOISE_KEYS.has(k)) continue;
     if (k === "url" && typeof v === "string" && v.includes("api.github.com")) continue;
+    if (
+      k.endsWith("_url") &&
+      k !== "html_url" &&
+      k !== "download_url" &&
+      k !== "target_url" &&
+      k !== "archive_download_url" &&
+      typeof v === "string" &&
+      (v.includes("api.github.com") || v.includes("{"))
+    ) {
+      continue;
+    }
     const cleaned = projectOutput(v, depth + 1, maxDepth);
     if (cleaned !== undefined && cleaned !== null && cleaned !== "") {
       result[k] = cleaned;
@@ -487,7 +540,7 @@ export function formatPullRequestsMarkdown(data) {
 }
 
 export function formatWorkflowRunsMarkdown(data) {
-  const items = Array.isArray(data) ? data : data?.workflow_runs || [];
+  const items = Array.isArray(data) ? data : data?.workflow_runs || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "ID", get: (r) => r.id },
     { header: "Workflow", get: (r) => r.name },
@@ -499,7 +552,7 @@ export function formatWorkflowRunsMarkdown(data) {
 }
 
 export function formatWorkflowsMarkdown(data) {
-  const items = Array.isArray(data) ? data : data?.workflows || [];
+  const items = Array.isArray(data) ? data : data?.workflows || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "ID", get: (w) => w.id },
     { header: "Name", get: (w) => w.name },
@@ -509,7 +562,7 @@ export function formatWorkflowsMarkdown(data) {
 }
 
 export function formatCommitsMarkdown(data) {
-  const items = Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : data?.commits || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "SHA", get: (c) => (c.sha ? c.sha.slice(0, 7) : "-") },
     { header: "Author", get: (c) => (c.author?.name || c.commit?.author?.name || "-") },
@@ -519,7 +572,7 @@ export function formatCommitsMarkdown(data) {
 }
 
 export function formatBranchesMarkdown(data) {
-  const items = Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : data?.branches || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "Branch", get: (b) => b.name },
     { header: "Protected", get: (b) => (b.protected ? "Yes" : "No") },
@@ -528,7 +581,7 @@ export function formatBranchesMarkdown(data) {
 }
 
 export function formatCollaboratorsMarkdown(data) {
-  const items = Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : data?.collaborators || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "User", get: (c) => `@${c.login}` },
     { header: "Role", get: (c) => c.role_name || "-" },
@@ -537,7 +590,7 @@ export function formatCollaboratorsMarkdown(data) {
 }
 
 export function formatVariablesMarkdown(data) {
-  const items = Array.isArray(data) ? data : data?.variables || [];
+  const items = Array.isArray(data) ? data : data?.variables || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "Name", get: (v) => v.name },
     { header: "Value", get: (v) => v.value },
@@ -546,7 +599,7 @@ export function formatVariablesMarkdown(data) {
 }
 
 export function formatMilestonesMarkdown(data) {
-  const items = Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : data?.milestones || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "#", get: (m) => `#${m.number}` },
     { header: "Title", get: (m) => m.title },
@@ -557,13 +610,25 @@ export function formatMilestonesMarkdown(data) {
 }
 
 export function formatReleasesMarkdown(data) {
-  const items = Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : data?.releases || data?.items || [];
   return renderMarkdownTable(items, [
     { header: "Tag", get: (r) => r.tag_name },
     { header: "Name", get: (r) => r.name || "-" },
     { header: "Status", get: (r) => (r.draft ? "Draft" : r.prerelease ? "Pre-release" : "Published") },
     { header: "Author", get: (r) => (r.author ? `@${r.author}` : "-") },
     { header: "Published", get: (r) => (r.published_at ? r.published_at.split("T")[0] : "-") },
+  ]);
+}
+
+export function formatRepositoriesListMarkdown(data) {
+  const items = Array.isArray(data) ? data : data?.repositories || data?.items || [];
+  return renderMarkdownTable(items, [
+    { header: "ID", get: (r) => r.id },
+    { header: "Repository", get: (r) => r.full_name || r.name },
+    { header: "Visibility", get: (r) => (r.private ? "private" : "public") },
+    { header: "Stars", get: (r) => r.stargazers_count ?? 0 },
+    { header: "Default Branch", get: (r) => `\`${r.default_branch || "main"}\`` },
+    { header: "Description", get: (r) => (r.description ? (r.description.length > 60 ? r.description.slice(0, 57) + "..." : r.description) : "-") },
   ]);
 }
 
@@ -579,6 +644,27 @@ export function formatRepositoryMarkdown(r) {
   return md;
 }
 
+export function formatFileContentsMarkdown(f) {
+  if (!f) return "_No file data._";
+  if (Array.isArray(f)) {
+    return renderMarkdownTable(f, [
+      { header: "Name", get: (item) => item.name },
+      { header: "Path", get: (item) => `\`${item.path}\`` },
+      { header: "Type", get: (item) => item.type },
+      { header: "Size", get: (item) => formatBytes(item.size) },
+      { header: "SHA", get: (item) => (item.sha ? item.sha.slice(0, 7) : "-") },
+    ]);
+  }
+  const shortSha = f.sha ? f.sha.slice(0, 7) : "-";
+  let md = `## File: \`${f.path || f.name}\` (${f.size ?? 0} B, SHA: \`${shortSha}\`)${f.sliced_lines ? ` [Lines ${f.sliced_lines}]` : ""}\n\n`;
+  if (f.outline) {
+    md += `### Symbol Outline\n\n\`\`\`\n${f.outline}\n\`\`\`\n`;
+  } else if (f.decoded_content !== undefined && f.decoded_content !== null) {
+    md += `\`\`\`\n${f.decoded_content}\n\`\`\`\n`;
+  }
+  return md;
+}
+
 export function formatCommitDetailsMarkdown(c) {
   if (!c) return "_No commit data._";
   let md = `## Commit \`${c.sha?.slice(0, 7) || ""}\`: ${c.headline || c.message?.split("\n")[0] || ""}\n\n`;
@@ -587,16 +673,24 @@ export function formatCommitDetailsMarkdown(c) {
     md += `- **Committer**: ${c.committer.name} on ${c.committer.date || "-"}\n`;
   }
   if (c.html_url) md += `- **HTML URL**: ${c.html_url}\n`;
+  if (c.diff_note) md += `- **Note**: ${c.diff_note}\n`;
   if (c.message) {
     md += `\n### Message\n\n${c.message}\n`;
   }
   if (Array.isArray(c.files) && c.files.length > 0) {
     md += `\n### Files Changed (${c.files.length})\n\n`;
     md += renderMarkdownTable(c.files, [
-      { header: "File", get: (f) => f.filename || f.path },
+      { header: "File", get: (f) => f.filename },
       { header: "Status", get: (f) => f.status },
       { header: "Changes", get: (f) => `+${f.additions || 0}/-${f.deletions || 0}` },
     ]);
+    const filesWithPatch = c.files.filter((f) => f.patch);
+    if (filesWithPatch.length > 0) {
+      md += `\n### Diffs\n`;
+      for (const f of filesWithPatch) {
+        md += `\n#### \`${f.filename}\` (${f.status})\n\n\`\`\`diff\n${f.patch}\n\`\`\`\n`;
+      }
+    }
   }
   if (c.diff) {
     md += `\n### Diff\n\n\`\`\`diff\n${c.diff}\n\`\`\`\n`;
@@ -604,21 +698,21 @@ export function formatCommitDetailsMarkdown(c) {
   return md;
 }
 
-const ACTION_FORMATTERS = {
+export const ACTION_FORMATTERS = {
   list_issues: formatIssuesMarkdown,
-  search_issues: formatIssuesMarkdown,
   list_pull_requests: formatPullRequestsMarkdown,
-  search_pull_requests: formatPullRequestsMarkdown,
   list_workflow_runs: formatWorkflowRunsMarkdown,
   list_workflows: formatWorkflowsMarkdown,
   list_commits: formatCommitsMarkdown,
   list_branches: formatBranchesMarkdown,
   list_collaborators: formatCollaboratorsMarkdown,
-  list_repository_variables: formatVariablesMarkdown,
-  list_organization_variables: formatVariablesMarkdown,
+  list_actions_variables: formatVariablesMarkdown,
   list_milestones: formatMilestonesMarkdown,
   list_releases: formatReleasesMarkdown,
+  search_repositories: formatRepositoriesListMarkdown,
+  list_accessible_repositories: formatRepositoriesListMarkdown,
   get_repository: formatRepositoryMarkdown,
+  get_file_contents: formatFileContentsMarkdown,
   get_commit: formatCommitDetailsMarkdown,
 };
 
@@ -641,6 +735,9 @@ export function jsonToMarkdown(data, actionName) {
     }
     if (data.items[0]?.number && data.items[0]?.title) {
       return formatIssuesMarkdown(data);
+    }
+    if (data.items[0]?.full_name !== undefined && data.items[0]?.default_branch !== undefined) {
+      return formatRepositoriesListMarkdown(data);
     }
   }
   if (data.workflow_runs && Array.isArray(data.workflow_runs)) {
@@ -677,7 +774,7 @@ export function jsonToMarkdown(data, actionName) {
 
       // General table formatting with prioritized column selection
       const allKeys = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
-      const priorityKeys = ["number", "id", "name", "title", "key", "state", "status", "type", "ref", "user", "login", "author", "created_at", "value"];
+      const priorityKeys = ["number", "id", "name", "title", "state", "status", "type", "ref", "user", "login", "author", "created_at", "value"];
       const sortedKeys = [
         ...priorityKeys.filter((k) => allKeys.includes(k)),
         ...allKeys.filter((k) => !priorityKeys.includes(k)),
@@ -703,7 +800,7 @@ export function jsonToMarkdown(data, actionName) {
     return data
       .map((item) => {
         if (typeof item === "object" && item !== null) {
-          const label = item.name || item.title || item.key || item.number || item.id || "Item";
+          const label = item.name || item.title || item.number || item.id || "Item";
           const desc = item.status || item.state || item.description || "";
           return `- **${label}**${desc ? `: ${desc}` : ""}`;
         }
@@ -746,7 +843,7 @@ export function extractSmartJobLog(rawLog, { tail_lines = 100, strip_ansi = true
   if (!rawLog) return "";
   let text = strip_ansi ? stripAnsi(rawLog) : rawLog;
   const lines = text.split(/\r?\n/);
-  if (lines.length <= tail_lines) {
+  if (!tail_lines || tail_lines <= 0 || lines.length <= tail_lines) {
     return lines.join("\n");
   }
 

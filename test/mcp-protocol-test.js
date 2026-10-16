@@ -1,10 +1,13 @@
 import assert from "node:assert";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 console.log("--- Testing @sumirati/mcp-github Protocol JSON-RPC ListTools & CallTool ---");
 
-const proc = spawn("/opt/local/bin/node", ["index.js"], {
-  cwd: "/Users/sumirati/src/antigravity/MCP-github",
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const proc = spawn(process.execPath, ["index.js"], {
+  cwd: repoRoot,
   env: {
     ...process.env,
     GITHUB_PERSONAL_ACCESS_TOKEN: "dummy-token",
@@ -58,9 +61,10 @@ proc.stdout.on("data", (data) => {
       console.log("[PASS] Received tools/call response for github_find_actions (default format: markdown)");
       const text = msg.result.content[0].text;
       assert(typeof text === "string", "Expected string markdown output");
-      assert(text.includes("| Action | Domain | Mutating | Description |"), "Expected markdown table header");
+      assert(text.includes("| Action | Domain | Mutating | Parameters (`*` = required) | Description |"), "Expected 5-column markdown table header with Parameters");
       assert(text.includes("`create_pull_request`"), "Expected create_pull_request in markdown table");
-      console.log("       Verified default markdown response format");
+      assert(text.includes("`owner*`"), "Expected required parameter signature in markdown table");
+      console.log("       Verified default markdown response format with parameter signatures");
 
       // Test explicit format: 'json'
       send({

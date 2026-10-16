@@ -16,7 +16,7 @@ export const ListCommitsSchema = RepoParamsSchema.extend({
 
 export const GetCommitSchema = RepoParamsSchema.extend({
   ref: z.string().describe("Commit SHA, branch name, or tag reference to inspect"),
-  file_path: z.string().optional().describe("Optional file path filter: only include diff and stats for this single file"),
+  path: z.string().optional().describe("Optional file path filter: only include diff and stats for this single file"),
   max_diff_lines: z.number().optional().default(400).describe("Maximum unified diff lines to return across files to conserve LLM context tokens (default: 400)"),
   ignore_lockfiles: z.boolean().optional().default(true).describe("If true, automatically collapses diffs for lockfiles and minified assets (default: true)"),
   format: z.enum(["json", "markdown"]).optional().default("markdown").describe("Output format: 'markdown' (default) or 'json'"),
@@ -24,18 +24,17 @@ export const GetCommitSchema = RepoParamsSchema.extend({
 
 export const CreateCommitSchema = RepoParamsSchema.extend({
   branch: z.string().describe("Target branch name to commit changes to (e.g. 'main' or 'feature/auth')"),
-  message: z.string().optional().describe("Clear Git commit message describing the atomic changes"),
-  commit_message: z.string().optional().describe("Alias for message"),
+  message: z.string().min(1).describe("Clear Git commit message describing the atomic changes"),
   files: z
     .array(
       z.object({
-        path: z.string().optional().describe("File path relative to repository root (e.g. 'src/index.js')"),
-        file_path: z.string().optional().describe("Alias for path"),
-        content: z.string().describe("Full content of the file to write"),
+        path: z.string().min(1).describe("File path relative to repository root (e.g. 'src/index.js')"),
+        action: z.enum(["create", "update", "delete"]).optional().default("update").describe("File operation: 'create', 'update', or 'delete' (default: 'update')"),
+        content: z.string().optional().describe("Full content of the file to write (required for 'create' and 'update'; omit for 'delete')"),
       })
     )
     .min(1)
-    .describe("Array of files to create or update atomically in a single Git commit"),
+    .describe("Array of files to create, update, or delete atomically in a single Git commit"),
 });
 
 export const PushFilesSchema = CreateCommitSchema;
@@ -53,13 +52,13 @@ export const commitTools = [
   },
   {
     name: "create_commit",
-    description: "Create an atomic Git commit with multiple changed or new files using the GitHub Git Trees API. Use when refactoring, applying multi-file code changes, or updating code and docs together. Avoids multiple individual single-file commits and does not require local git cloning. Requires write permissions and GITHUB_READ_ONLY=false.",
+    description: "Create an atomic Git commit with multiple created, updated, or deleted files using the GitHub Git Trees API. Use when refactoring, applying multi-file code changes, or updating code and docs together. Avoids multiple individual single-file commits and does not require local git cloning. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(CreateCommitSchema),
     mutating: true,
   },
   {
     name: "push_files",
-    description: "Alias for 'create_commit': atomically commit modifications to multiple files in a single Git commit via the GitHub Git Database API. Requires write permissions and GITHUB_READ_ONLY=false.",
+    description: "Alias for 'create_commit': atomically commit additions, modifications, or deletions to multiple files in a single Git commit via the GitHub Git Database API. Requires write permissions and GITHUB_READ_ONLY=false.",
     inputSchema: zodToJsonSchema(PushFilesSchema),
     mutating: true,
   },
@@ -80,8 +79,9 @@ export const commitHandlers = {
     if (parsed.until) q.set("until", parsed.until);
 
     const res = await githubRequest(`/repos/${owner}/${repo}/commits?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map((c) => summarizeCommit(c, { full_message: parsed.with_message }));
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map((c) => summarizeCommit(c, { full_message: parsed.with_message }));
+    return res.pagination ? { pagination: res.pagination, commits: items } : items;
   },
 
   get_commit: async (args) => {
@@ -92,10 +92,10 @@ export const commitHandlers = {
     let files = res.files || [];
     const totalFilesCount = files.length;
     let diffNote;
-    if (parsed.file_path) {
-      files = files.filter((f) => f.filename === parsed.file_path || f.previous_filename === parsed.file_path);
+    if (parsed.path) {
+      files = files.filter((f) => f.filename === parsed.path || f.previous_filename === parsed.path);
     } else if (files.length > 10) {
-      diffNote = `Commit contains ${totalFilesCount} files. Showing diffs for first 10 files. Use file_path parameter to inspect others.`;
+      diffNote = `Commit contains ${totalFilesCount} files. Showing diffs for first 10 files. Use path parameter to inspect others.`;
       files = files.slice(0, 10);
     }
 
@@ -138,19 +138,24 @@ export const commitHandlers = {
   create_commit: async (args) => {
     const { owner, repo } = normalizeRepoParams(args);
     const parsed = CreateCommitSchema.parse(args);
-    const commitMsg = parsed.message || parsed.commit_message;
-    if (!commitMsg || !commitMsg.trim()) {
-      throw new Error("Commit message is required (pass 'message' or 'commit_message')");
+    const commitMsg = parsed.message.trim();
+    if (!commitMsg) {
+      throw new Error("Commit 'message' cannot be empty");
     }
 
     const branch = parsed.branch;
     const fileItems = parsed.files.map((f, idx) => {
-      const p = f.path || f.file_path;
-      if (!p || typeof p !== "string" || !p.trim()) {
-        throw new Error(`File at index ${idx} is missing 'path' or 'file_path'`);
+      const p = f.path.trim().replace(/^\/+/, "");
+      if (!p) {
+        throw new Error(`File at index ${idx} has an empty 'path'`);
+      }
+      const action = f.action || "update";
+      if (action !== "delete" && f.content === undefined) {
+        throw new Error(`File '${p}' at index ${idx} requires 'content' when action is '${action}'`);
       }
       return {
-        path: p.trim().replace(/^\/+/, ""),
+        path: p,
+        action,
         content: f.content,
       };
     });
@@ -171,13 +176,22 @@ export const commitHandlers = {
     const commitRes = await githubRequest(`/repos/${owner}/${repo}/git/commits/${currentCommitSha}`);
     const baseTreeSha = commitRes.tree?.sha;
 
-    // 3. Create new tree with updated file entries
-    const treeElements = fileItems.map((f) => ({
-      path: f.path,
-      mode: "100644",
-      type: "blob",
-      content: f.content,
-    }));
+    // 3. Create new tree with updated or deleted file entries
+    const treeElements = fileItems.map((f) =>
+      f.action === "delete"
+        ? {
+            path: f.path,
+            mode: "100644",
+            type: "blob",
+            sha: null,
+          }
+        : {
+            path: f.path,
+            mode: "100644",
+            type: "blob",
+            content: f.content,
+          }
+    );
 
     const newTree = await githubRequest(`/repos/${owner}/${repo}/git/trees`, {
       method: "POST",

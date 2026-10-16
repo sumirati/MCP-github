@@ -209,7 +209,7 @@ export const repositoryHandlers = {
       size: res.size,
     };
 
-    if (res.content && res.encoding === "base64") {
+    if (typeof res.content === "string" && (res.encoding === "base64" || res.content === "")) {
       const decoded = Buffer.from(res.content, "base64").toString("utf-8");
       if (parsed.outline_only) {
         result.outline = extractSymbolOutline(decoded, cleanPath);
@@ -299,8 +299,9 @@ export const repositoryHandlers = {
     });
     if (parsed.protected !== undefined) q.set("protected", parsed.protected.toString());
     const res = await githubRequest(`/repos/${owner}/${repo}/branches?${q.toString()}`);
-    const items = Array.isArray(res) ? res : res.items || [];
-    return items.map(summarizeBranch);
+    const rawItems = Array.isArray(res) ? res : res.items || [];
+    const items = rawItems.map(summarizeBranch);
+    return res.pagination ? { pagination: res.pagination, branches: items } : items;
   },
 
   get_branch: async (args) => {
@@ -348,7 +349,11 @@ export const repositoryHandlers = {
 
     let sha = parsed.sha;
     if (!sha) {
-      const sourceBranch = parsed.from_branch || "main";
+      let sourceBranch = parsed.from_branch;
+      if (!sourceBranch) {
+        const repoInfo = await githubRequest(`/repos/${owner}/${repo}`);
+        sourceBranch = repoInfo.default_branch || "main";
+      }
       const branchData = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(sourceBranch)}`);
       sha = branchData.commit?.sha;
     }

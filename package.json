@@ -1,6 +1,6 @@
 {
   "name": "@sumirati/mcp-github",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Model Context Protocol (MCP) server for GitHub REST API using 5-Tool Hybrid Architecture",
   "main": "index.js",
   "type": "module",
@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "start": "node index.js",
-    "test": "GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/v2-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/client-resilience-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/mcp-protocol-test.js"
+    "gen-docs": "node scripts/gen-docs.js",
+    "test": "GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/v2-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/client-resilience-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/mcp-protocol-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/benchmark-test.js && GITHUB_PERSONAL_ACCESS_TOKEN=dummy node test/catalog-execution-test.js"
   },
   "repository": {
     "type": "git",

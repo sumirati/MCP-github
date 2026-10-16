@@ -27,7 +27,7 @@ function getDomainForTool(name) {
   if (name.includes("workflow") || name.includes("job") || name.includes("run") || name.includes("artifact")) return "actions";
   if (name.includes("release") || name.includes("tag")) return "releases";
   if (name.includes("commit")) return "commits";
-  if (name.includes("user") || name.includes("organization") || name.includes("health") || name.includes("team") || name.includes("group")) return "user";
+  if (name.includes("user") || name.includes("organization") || name.includes("health") || name.includes("team")) return "user";
   return "repositories";
 }
 
@@ -101,8 +101,6 @@ const DOMAIN_ALIASES = {
   organizations: "user",
   teams: "user",
   team: "user",
-  groups: "user",
-  group: "user",
 };
 
 /**
@@ -125,6 +123,18 @@ function extractParameterSummary(inputSchema) {
   return { required, properties };
 }
 
+function formatCompactParamSignature(parameters) {
+  if (!parameters || !parameters.properties) return "-";
+  const reqSet = new Set(parameters.required || []);
+  const keys = Object.keys(parameters.properties);
+  if (keys.length === 0) return "-";
+  const sorted = [
+    ...keys.filter((k) => reqSet.has(k)).map((k) => `\`${k}*\``),
+    ...keys.filter((k) => !reqSet.has(k)).map((k) => `\`${k}?\``),
+  ];
+  return sorted.join(", ");
+}
+
 function formatActionsAsMarkdown(result) {
   if (result.message) {
     let md = `## GitHub Action Catalog\n\n${result.message}\n\n### Available Domains\n\n`;
@@ -135,12 +145,13 @@ function formatActionsAsMarkdown(result) {
   }
 
   let md = `### GitHub Actions (${result.total_matches} total matches, showing ${result.returned_actions})\n\n`;
-  md += `| Action | Domain | Mutating | Description |\n`;
-  md += `| :--- | :--- | :--- | :--- |\n`;
+  md += `| Action | Domain | Mutating | Parameters (\`*\` = required) | Description |\n`;
+  md += `| :--- | :--- | :--- | :--- | :--- |\n`;
   for (const a of result.actions) {
     const mut = a.mutating ? "Yes" : "No";
+    const paramsSig = formatCompactParamSignature(a.parameters);
     const desc = (a.description || "").replace(/\|/g, "\\|").replace(/\n/g, " ");
-    md += `| \`${a.action}\` | ${a.domain} | ${mut} | ${desc} |\n`;
+    md += `| \`${a.action}\` | ${a.domain} | ${mut} | ${paramsSig} | ${desc} |\n`;
   }
   return md;
 }
@@ -181,7 +192,7 @@ export function findActions(queryOrOpts = "", domain = "", format = "markdown") 
       daily_driver_eager_tools: [
         "get_file_contents (owner, repo, path, [ref])",
         "get_repository (owner, repo)",
-        "get_commit (owner, repo, ref, [file_path], [max_diff_lines])",
+        "get_commit (owner, repo, ref, [path], [max_diff_lines])",
       ],
       usage_hint: "Call github_find_actions(query: 'pull request') or github_find_actions(domain: 'issues') to inspect parameter signatures.",
     };
@@ -228,9 +239,9 @@ export async function executeAction(actionName, params = {}, options = {}) {
 
   const rawResult = await actionDef.handler(params);
   // Apply token compression output projection
-  const projected = projectOutput(rawResult);
+  const finalResult = projectOutput(rawResult);
   const defaultFormat = process.env.MCP_OUTPUT_FORMAT === "json" ? "json" : "markdown";
-  const requestedFormat = options.format || (params && params.format) || defaultFormat;
+  const requestedFormat = (typeof options === "string" ? options : options?.format) || (params && params.format) || defaultFormat;
   if (requestedFormat === "markdown") {
     return jsonToMarkdown(finalResult, actionName);
   }
