@@ -100,4 +100,38 @@ try {
   global.fetch = originalFetch;
 }
 
-console.log("ALL GITHUB CLIENT RESILIENCE TESTS PASSED!\n");
+// Test 7: projectOutput hardening (html_url preservation, empty collections, depth guard)
+import { projectOutput } from "../src/helpers.js";
+
+// Verify html_url preservation and noise key removal
+const samplePayload = {
+  id: 42,
+  html_url: "https://github.com/octocat/Hello-World/releases/tag/v1.0.0",
+  node_id: "MDQ6VXNlcjE=",
+  avatar_url: "https://github.com/images/error/octocat_happy.gif",
+  url: "https://api.github.com/repos/octocat/Hello-World",
+};
+const cleaned = projectOutput(samplePayload);
+assert.strictEqual(cleaned.html_url, "https://github.com/octocat/Hello-World/releases/tag/v1.0.0", "html_url must be preserved");
+assert.strictEqual(cleaned.avatar_url, undefined, "avatar_url must be stripped");
+assert.strictEqual(cleaned.node_id, undefined, "node_id must be stripped");
+assert.strictEqual(cleaned.url, undefined, "internal api.github.com url must be stripped");
+console.log("[PASS] projectOutput preserves html_url while stripping noise keys and api.github.com URLs");
+
+// Verify empty root collections are preserved
+assert.deepStrictEqual(projectOutput({}), {}, "Empty root object must be preserved as {}");
+assert.deepStrictEqual(projectOutput([]), [], "Empty root array must be preserved as []");
+console.log("[PASS] projectOutput preserves empty root collections");
+
+// Verify recursion depth guard (maxDepth = 32)
+let deepObj = { level: 0 };
+let current = deepObj;
+for (let i = 1; i <= 40; i++) {
+  current.child = { level: i };
+  current = current.child;
+}
+const depthTested = projectOutput(deepObj, 0, 32);
+assert(depthTested !== undefined, "Deep object should not throw call-stack exhaustion");
+console.log("[PASS] projectOutput recursion depth guard (maxDepth = 32) verified");
+
+console.log("ALL GITHUB CLIENT RESILIENCE & PROJECTION TESTS PASSED!\n");

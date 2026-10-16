@@ -255,6 +255,24 @@ Raw GitHub REST API responses are notoriously heavy (often 30KB–100KB per Issu
 
 ---
 
+## Roadmap
+
+### Upcoming (v2.2)
+- [x] Upstream indexed filtering & strict pagination caps (`state`, `labels`, `assignee`, `creator`, `mentioned`, `milestone`, `since`)
+- [x] Client error resilience (Secondary rate limit / abuse detection, 403/404 scope diagnostics, 201 ghost write guard)
+- [x] Hardened output projection with recursion depth guard (`maxDepth = 32`) and empty collection preservation
+- [x] Nested subteam & organization management (`create_team`, `get_organization`, `create_group`)
+- [ ] Pre-flight mergeability & conflict verification (`get_mergeability`)
+- [ ] Token scope self-auditing & permission pre-flight
+
+### Future Horizons (v2.x)
+- [ ] Remote Transports: Streamable SSE and HTTP remote server modes
+- [ ] Scoped GraphQL query engine for relational deep inspections
+- [ ] DevSecOps code scanning & secret scanning alert queries
+- [ ] Scoped & rate-guarded code search within project repositories
+
+---
+
 ## Acknowledgements & Lineage
 
 This project incorporates architectural concepts, schemas, and patterns from:
